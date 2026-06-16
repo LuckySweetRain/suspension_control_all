@@ -1,0 +1,42 @@
+{
+  "status": "staged",
+  "template_dir": "docs\\thesis_template_import_demo",
+  "import_dir": "docs\\thesis_template_import_demo\\thesis_import",
+  "copied_count": 8,
+  "missing": [],
+  "copied": [
+    {
+      "source": "docs\\thesis_export_package\\latex\\thesis_chapter_draft_cn.tex",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\latex\\thesis_chapter_draft_cn.tex"
+    },
+    {
+      "source": "docs\\thesis_export_package\\latex\\thesis_latex_snippets.tex",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\latex\\thesis_latex_snippets.tex"
+    },
+    {
+      "source": "docs\\thesis_export_package\\latex\\thesis_standalone_preview.pdf",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\latex\\thesis_standalone_preview.pdf"
+    },
+    {
+      "source": "docs\\thesis_export_package\\guides\\thesis_latex_integration_guide.md",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\guides\\thesis_latex_integration_guide.md"
+    },
+    {
+      "source": "docs\\thesis_export_package\\guides\\thesis_workflow_index.md",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\guides\\thesis_workflow_index.md"
+    },
+    {
+      "source": "docs\\thesis_export_package\\guides\\thesis_final_submission_checklist.md",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\guides\\thesis_final_submission_checklist.md"
+    },
+    {
+      "source": "docs\\thesis_export_package\\guides\\thesis_defense_qa.md",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\guides\\thesis_defense_qa.md"
+    },
+    {
+      "source": "docs\\thesis_export_package\\evidence\\thesis_readiness_report.md",
+      "target": "docs\\thesis_template_import_demo\\thesis_import\\evidence\\thesis_readiness_report.md"
+    }
+  ],
+  "instructions": "docs\\thesis_template_import_demo\\thesis_import\\THESIS_IMPORT_INSTRUCTIONS.md"
+}

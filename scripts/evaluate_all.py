@@ -14,6 +14,23 @@ from experiments.evaluation import evaluate_all
 from visualization.plots import plot_all
 
 
+MPC_PARAMETER_POLICY_ALIASES = {"bp_nmps", "neural_mpc_parameter", "mpc_parameter_policy"}
+
+
+def _latest_checkpoint_candidates(algorithm: str) -> list[Path]:
+    if algorithm in MPC_PARAMETER_POLICY_ALIASES:
+        return sorted(
+            (ROOT / "results").glob("**/mpc_parameter_neural_policy.pt"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    return sorted(
+        (ROOT / "results").glob(f"*_{algorithm}/checkpoints/final.pt"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+
 def resolve_checkpoint(value: str | None, algorithm: str = "td3") -> str | None:
     if not value:
         return None
@@ -22,17 +39,15 @@ def resolve_checkpoint(value: str | None, algorithm: str = "td3") -> str | None:
             "Checkpoint path still contains the placeholder '<run>'. "
             "Use a real run directory, for example "
             "results\\20260517_180625_td3\\checkpoints\\final.pt."
-        )
+    )
     if value.lower() == "latest":
-        candidates = sorted(
-            (ROOT / "results").glob(f"*_{algorithm}/checkpoints/final.pt"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
+        candidates = _latest_checkpoint_candidates(algorithm)
         if not candidates:
-            raise FileNotFoundError(
-                f"No {algorithm.upper()} checkpoint found under results\\*_{algorithm}\\checkpoints\\final.pt"
-            )
+            if algorithm in MPC_PARAMETER_POLICY_ALIASES:
+                pattern = "results\\**\\mpc_parameter_neural_policy.pt"
+            else:
+                pattern = f"results\\*_{algorithm}\\checkpoints\\final.pt"
+            raise FileNotFoundError(f"No {algorithm.upper()} checkpoint found under {pattern}")
         return str(candidates[0])
     checkpoint = Path(value)
     if not checkpoint.is_absolute():
@@ -63,7 +78,7 @@ def main():
     parser.add_argument(
         "--checkpoints",
         default=None,
-        help="Comma-separated algorithm=checkpoint pairs, e.g. td3=latest,ddpg=latest,sac=latest,ppo=latest",
+        help="Comma-separated algorithm=checkpoint pairs, e.g. td3=latest,sac=latest,ppo=latest,bp_nmps=latest",
     )
     parser.add_argument("--out", default=None)
     args = parser.parse_args()

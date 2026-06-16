@@ -1,0 +1,86 @@
+{
+  "status": "exported",
+  "out_dir": "docs\\thesis_export_package",
+  "copied_count": 18,
+  "missing": [],
+  "copied": [
+    {
+      "source": "docs\\thesis_chapter_draft_cn.tex",
+      "target": "docs\\thesis_export_package\\latex\\thesis_chapter_draft_cn.tex"
+    },
+    {
+      "source": "docs\\thesis_latex_snippets.tex",
+      "target": "docs\\thesis_export_package\\latex\\thesis_latex_snippets.tex"
+    },
+    {
+      "source": "docs\\thesis_standalone_preview.tex",
+      "target": "docs\\thesis_export_package\\latex\\thesis_standalone_preview.tex"
+    },
+    {
+      "source": "docs\\latex_preview\\thesis_standalone_preview.pdf",
+      "target": "docs\\thesis_export_package\\latex\\thesis_standalone_preview.pdf"
+    },
+    {
+      "source": "docs\\thesis_latex_integration_guide.md",
+      "target": "docs\\thesis_export_package\\guides\\thesis_latex_integration_guide.md"
+    },
+    {
+      "source": "docs\\thesis_workflow_index.md",
+      "target": "docs\\thesis_export_package\\guides\\thesis_workflow_index.md"
+    },
+    {
+      "source": "docs\\thesis_final_submission_checklist.md",
+      "target": "docs\\thesis_export_package\\guides\\thesis_final_submission_checklist.md"
+    },
+    {
+      "source": "docs\\thesis_defense_qa.md",
+      "target": "docs\\thesis_export_package\\guides\\thesis_defense_qa.md"
+    },
+    {
+      "source": "docs\\si_rppo_ccfa_innovation_framing.md",
+      "target": "docs\\thesis_export_package\\guides\\si_rppo_ccfa_innovation_framing.md"
+    },
+    {
+      "source": "docs\\thesis_evidence_package.md",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_evidence_package.md"
+    },
+    {
+      "source": "docs\\thesis_claim_matrix.md",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_claim_matrix.md"
+    },
+    {
+      "source": "docs\\thesis_completion_audit.md",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_completion_audit.md"
+    },
+    {
+      "source": "docs\\thesis_objective_evidence.md",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_objective_evidence.md"
+    },
+    {
+      "source": "docs\\thesis_objective_evidence.json",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_objective_evidence.json"
+    },
+    {
+      "source": "docs\\thesis_claim_boundary_audit.md",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_claim_boundary_audit.md"
+    },
+    {
+      "source": "docs\\thesis_claim_boundary_audit.json",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_claim_boundary_audit.json"
+    },
+    {
+      "source": "docs\\thesis_readiness_report.md",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_readiness_report.md"
+    },
+    {
+      "source": "docs\\thesis_readiness_report.json",
+      "target": "docs\\thesis_export_package\\evidence\\thesis_readiness_report.json"
+    }
+  ],
+  "manifest": "docs\\thesis_export_package\\manifest.json",
+  "readme": "docs\\thesis_export_package\\README.md",
+  "archive": "E:\\Desktop\\workspace\\suspension_control_all\\docs\\thesis_export_package.zip",
+  "archive_sha256_file": "E:\\Desktop\\workspace\\suspension_control_all\\docs\\thesis_export_package.zip.sha256",
+  "archive_size_bytes": 167782,
+  "archive_sha256": "755ec08fc85bf39b0b13f1c6bacc248344aaae2321e5b749647ba80874047cbf"
+}

@@ -7,7 +7,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from controllers import MPCController, PIDController, ReducedFullCarPreviewController, RLTransformerController, SPDFController
+from controllers import MPCController, NeuralMPCParameterController, PIDController, ReducedFullCarPreviewController, RLTransformerController, SPDFController
 from controllers.prior import (
     adapt_action_to_env,
     compute_prior_action,
@@ -161,6 +161,8 @@ def make_controller(
         return MPCController(env.model, config)
     if key in {"full_car_mpc_lite", "mpc_lite", "lqr", "lpv"}:
         return ReducedFullCarPreviewController(env, config)
+    if key in {"bp_nmps", "neural_mpc_parameter", "mpc_parameter_policy"}:
+        return NeuralMPCParameterController(env, config, checkpoint=checkpoint)
     if key in {"td3", "ddpg", "sac", "ppo", "rl"}:
         rl = RLTransformerController(config, algorithm=algorithm or key, checkpoint=checkpoint)
         residual_cfg = dict(config.get("residual_control", {}))
@@ -257,6 +259,14 @@ def rollout(env: HalfCarEnv, controller, use_preview: bool) -> dict:
             row["policy_projection_delta_rms"] = float(controller.last_projection_delta_rms)
         if hasattr(controller, "last_improvement_gate"):
             row["policy_improvement_gate"] = float(controller.last_improvement_gate)
+        if hasattr(controller, "deployment_gate_active"):
+            row["mpc_param_deployment_gate"] = float(controller.deployment_gate_active)
+        if hasattr(controller, "last_policy_action"):
+            for idx, value in enumerate(np.asarray(controller.last_policy_action).ravel()):
+                row[f"mpc_param_action_{idx}"] = float(value)
+        if hasattr(controller, "last_gains"):
+            for gain_name, value in dict(controller.last_gains).items():
+                row[f"mpc_param_gain_{gain_name}"] = float(value)
         for component_name, value in info.get("reward_components", {}).items():
             row[f"reward_{component_name}"] = float(value)
         if "ddroll" in d:

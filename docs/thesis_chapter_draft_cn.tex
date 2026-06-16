@@ -1,0 +1,141 @@
+% Auto-generated thesis chapter draft. Requires ctex/xelatex, amsmath, and booktabs.
+\chapter{基于路面预瞄的主动悬架控制方法与实验}
+\label{chap:road-preview-active-suspension}
+
+\section{研究路线定位}
+\label{sec:route-position}
+本文不将道路视觉重建或 PreScan 路面轮廓提取作为核心研究内容，而是假设上游感知模块已经输出沿车辆轮迹的路面不平度预瞄序列。研究重点是在已知路面预瞄、执行器约束和安全约束下，设计可解释、可部署的主动悬架控制策略。
+
+因此，本文控制路线组织为 SPDF 传统专家基线、fixed MPC-lite 结构化预瞄控制基线、BP-NMPS 神经 MPC 参数调度器，以及 SI-RPPO 安全教师门控强化学习策略网络。
+
+对应毕业设计目标，本文的三条技术线分别为：
+\begin{itemize}
+\item SPDF：形成已完成的传统控制基线。
+\item BP-NMPS：验证强化学习辅助的 MPC 参数学习是否能够在保留 MPC 结构的同时获得保守改进。
+\item SI-RPPO：作为策略网络创新主线，讨论安全教师门控、投影感知和部署平滑性对主动悬架强化学习控制的意义。
+\end{itemize}
+
+\section{控制问题与路面预瞄表示}
+\label{sec:control-problem-preview}
+四角全车主动悬架控制器的输入包括车辆状态、上一时刻执行器动作以及固定时域的路面预瞄序列。对于四角全车模型，预瞄 token 可表示为
+\begin{equation}
+\label{eq:road-preview-token}
+P_t[k] = [z_{fl}, z_{fr}, z_{rl}, z_{rr}]_{t+k\Delta t}.
+\end{equation}
+其中 $z_{fl},z_{fr},z_{rl},z_{rr}$ 分别表示前左、前右、后左和后右车轮对应的路面高度。对于式 \ref{eq:road-preview-token} 所示的预瞄输入，本文的重点不是从图像中恢复该序列，而是研究该序列进入控制器后的使用方式。
+
+因此，后续方法比较围绕同一动力学与预瞄输入展开：SPDF 提供不使用预瞄的传统基线，BP-NMPS 研究如何在 MPC-lite 中利用预瞄信息进行参数调度，SI-RPPO 则研究如何在强化学习策略网络中安全地利用预瞄信息输出主动修正。
+
+\section{SPDF 基线}
+\label{sec:spdf-baseline}
+SPDF 作为已完成的传统反馈控制基线，用于给出不依赖路面预瞄的专家控制参考。论文中应将 SPDF 定位为 classical baseline，而不是本文主要学习型贡献。该基线用于比较 fixed MPC-lite、BP-NMPS 和 SI-RPPO 在路面预瞄信息可用时的控制收益与部署代价。由于 SPDF 不使用式 \ref{eq:road-preview-token} 所示的未来路面信息，其作用是提供稳定参考基线，而不是作为预瞄控制性能上限。
+
+\section{BP-NMPS：强化学习辅助的 MPC 参数调度}
+\label{sec:bp-nmps}
+BP-NMPS 的核心思想是让神经策略学习 MPC-lite 的参数缩放，而不是直接输出悬架执行器力。策略网络根据路况摘要、基准 MPC-lite 参数和车辆配置输出式 \ref{eq:bp-nmps-parameter-action} 所示的归一化参数动作：
+\begin{equation}
+\label{eq:bp-nmps-parameter-action}
+a_{\theta} = [a_{k_z}, a_{k_{dz}}, a_{k_{pitch}}, a_{k_{dpitch}}, a_{k_{roll}}, a_{k_{droll}}, a_{k_{preview}}],
+\end{equation}
+\begin{equation}
+\label{eq:bp-nmps-deploy-control}
+K_{deploy}=K_{base}\odot scale(a_{\theta}), \qquad u_t=MPC_{lite}(x_t,P_t;K_{deploy}).
+\end{equation}
+如式 \ref{eq:bp-nmps-deploy-control} 所示，这种设计保留了 MPC-lite 的结构化和可解释性，同时将强化学习搜索空间从高频力指令空间转移到低维控制参数空间。部署时使用校准门控（calibration gate）：如果确定性神经参数调度器在校准场景中没有优于 fixed MPC-lite，则部署回退到 fixed MPC-lite。
+
+因此，实验报告中应区分原始神经调度策略（raw neural schedule）与带部署门控的调度策略（deployment-gated schedule）：前者用于分析神经参数策略本身是否学到有效调度，后者用于给出最终可部署控制器在安全边界下的性能。
+
+当前正式五随机种子留出场景评估（formal 5-seed held-out seed sweep）的结果为：随机种子数为 \texttt{5}，支持率为 \texttt{1.000}，部署策略平均 score 差值为 \texttt{-0.001314}，平均 unsafe steps 差值为 \texttt{0.000}。因此，论文中可将 BP-NMPS 表述为保守的自适应 MPC 参数调度器：当校准证据支持时进行小幅 gain 调整，当证据不足时回退 fixed MPC-lite。
+
+建议正文引用表 \ref{tab:bp_nmps_seed_sweep}、表 \ref{tab:bp_nmps_evidence} 和表 \ref{tab:bp_nmps_preview_robustness}。该结论不应被扩大为“神经策略全面替代 MPC”。
+
+\section{SI-RPPO：安全教师门控的策略网络设计}
+\label{sec:si-rppo}
+SI-RPPO 用于直接力输出强化学习控制。其创新点不是简单使用 PPO，而是改变策略的可部署形式：通过离线模仿初始化、增量动作参数化、投影感知约束和安全教师门控，使 PPO 的主动修正必须在状态相关门控下偏离安全教师。
+
+部署动作可写为
+\begin{equation}
+\label{eq:si-rppo-gated-action}
+u_t = \Pi_{\mathcal{U}}\left(g_t\Delta \pi_{\theta}(o_t,u_{t-1})+(1-g_t)u_{passive}\right),
+\end{equation}
+式 \ref{eq:si-rppo-gated-action} 中 $g_t$ 为安全教师改进门控（safe-teacher improvement gate），$\Delta \pi_{\theta}$ 表示 PPO 策略网络相对安全教师的增量修正。低激励或低置信场景下，$g_t$ 接近 0，策略保持接近安全教师；高激励场景下，$g_t$ 打开，允许 PPO 输出主动悬架修正力。
+
+当前 SI-RPPO 策略网络证据可概括为。下列结果中，return 表示回报差值，unsafe 表示不安全步数差值，action 表示动作平滑性相关差值，projection 表示投影误差差值：
+\begin{itemize}
+\item Projection-aware imitation PPO：BC-PPO vs PPO scratch，主要结果为 return 6326.7, unsafe -20.8, action -158.1, projection -0.480，状态为 \texttt{supported}。
+\item Offline imitation initialization：BC initialization vs random PPO，主要结果为 return 6326.7, action -158.1，状态为 \texttt{supported}。
+\item Safe-teacher improvement gate：gate activation by road scenario，主要结果为 mean gate 0.269, active>0.1 0.403, max 1.000，状态为 \texttt{supported}。
+\item Preview-robust policy deployment：SI-RPPO vs PPO scratch，主要结果为 return 7062.4, unsafe -17.7, action -158.0, projection -0.493，状态为 \texttt{supported}。
+\item Preview-robust policy deployment：SI-RPPO vs SAC，主要结果为 return -381.6, unsafe 0.0, action -139.0, projection -0.290，状态为 \texttt{tradeoff}。
+\item Preview-robust policy deployment：SI-RPPO vs TD3，主要结果为 return 8062.8, unsafe -76.3, action -104.1, projection -0.393，状态为 \texttt{supported}。
+\item Residual prior branch：residual BC-PPO vs direct BC-PPO，主要结果为 return -4141.5, unsafe 1.8，状态为 \texttt{weak\_or\_contradicted}。
+\end{itemize}
+
+在 preview corruption robustness 矩阵中，SI-RPPO 与主要学习基线的平均差异为：
+\begin{itemize}
+\item 相比 PPO scratch：return delta 为 \texttt{7062.4}，unsafe delta 为 \texttt{-17.7}，action-delta RMS delta 为 \texttt{-158.0}，projection-error delta 为 \texttt{-0.493}。
+\item 相比 SAC：return delta 为 \texttt{-381.6}，action-delta RMS delta 为 \texttt{-139.0}，projection-error delta 为 \texttt{-0.290}。
+\item 相比 TD3：return delta 为 \texttt{8062.8}，unsafe delta 为 \texttt{-76.3}，action-delta RMS delta 为 \texttt{-104.1}。
+\end{itemize}
+
+这些结果支持的表述是：SI-RPPO 显著改善 PPO scratch 的安全性、平滑性和投影可行性；相对 TD3 当前也表现出更好的回报、安全性和平滑性；相对 SAC 则体现为部署质量与回报之间的折中，回报不占优，但动作更平滑且投影误差显著降低。因此，论文中不应声称 SI-RPPO 全面优于 SAC，而应强调其对在线 PPO 可部署性的改造。
+
+建议正文引用表 \ref{tab:si_rppo_gate_evidence}、表 \ref{tab:si_rppo_preview_robustness} 和表 \ref{tab:si_rppo_strategy_evidence}。
+
+\section{实验章节组织建议}
+\label{sec:experiment-organization}
+实验章节可按如下顺序组织：
+\begin{enumerate}
+\item 仿真环境与指标：四角全车动力学、路面预瞄、执行器滞后/速率限制、安全约束和 reward/score 组成。
+\item SPDF、PASSIVE、fixed MPC-lite 基线：说明传统专家控制与结构化预瞄控制的参考地位。
+\item BP-NMPS 参数学习：报告 formal seed sweep、evidence table、gain schedule 和 preview robustness。
+\item SI-RPPO 策略网络消融：报告 PPO scratch、BC-PPO、gate evidence、preview robustness 以及 SAC/TD3 对照。
+\item 讨论、局限性与后续计划：强调当前证据支持可部署性和保守改进，不支持所有道路、所有感知误差、所有 RL baseline 下的普遍最优性；后续计划可按 SPDF 基线归档、BP-NMPS 参数学习扩展和 diffusion policy 多步力序列生成三部分组织。
+\end{enumerate}
+
+\section{后续计划目标}
+\label{sec:future-plan}
+\subsection{SPDF 基线归档}
+\label{subsec:future-spdf}
+SPDF 方法已经满足当前毕业设计中的传统控制基线目标，后续不再将其扩展为主要创新点。后续工作主要是将 SPDF 的参数设置、评价指标和对照结果在最终论文模板中整理清楚，使其作为 BP-NMPS 和 SI-RPPO 的稳定参考基线。
+
+\subsection{BP-NMPS 参数学习扩展}
+\label{subsec:future-bp-nmps}
+对于 MPC 参数学习方向，后续实验应继续围绕 BP-NMPS 展开，而不是转向黑盒力控制替代 MPC。具体可在现有 formal seed sweep 的基础上增加训练预算、随机种子数量和 held-out 道路类型，并系统加入预瞄噪声、延迟、截断和尺度偏差等感知误差。评价时应同时报告 fixed MPC-lite、BP-NMPS 原始策略和带 deployment gate 的部署策略，重点检查神经参数调度是否在不增加 unsafe steps 的前提下改善 score、车身加速度和动作平滑性；若校准证据不足，则仍应回退 fixed MPC-lite。
+
+\subsection{Diffusion policy 多步力序列}
+\label{subsec:future-diffusion-policy}
+在现有 SI-RPPO 策略网络基础上，后续可进一步引入 diffusion policy 作为多步力序列生成器。不同于当前策略在每个控制时刻直接输出单步主动悬架力，diffusion policy 可以根据车辆状态、上一时刻执行器动作以及记为 $P_{t:t+H-1}$ 的未来路面预瞄窗口，一次生成未来 $H$ 个控制步的力指令序列：
+\begin{equation}
+\label{eq:diffusion-action-sequence}
+U_{t:t+H-1} =
+\left[u_t,u_{t+1},\ldots,u_{t+H-1}\right]
+ \sim \pi_{\theta}^{\mathrm{diff}}(x_t,P_{t:t+H-1},u_{t-1}).
+\end{equation}
+对于式 \ref{eq:diffusion-action-sequence}，部署时控制器可以采用滚动时域（receding-horizon）或动作分块（action-chunking）方式，只执行该序列的前若干步，并在下一次策略推理时重新生成新的力序列。这样可以将高频执行器命令的生成从逐步在线优化转化为低频策略推理加高频序列执行：一方面能够在不显著增加在线控制器负担的情况下提供更密集的未来力指令，提高有效动作更新密度；另一方面，多步生成结构也更适合约束动作平滑性、执行器速率限制和未来路面扰动下的协同控制。
+
+该方向在论文中应作为后续计划或扩展目标表述，而不作为当前已经完成的实验结论。较为稳妥的研究路线可分为三步：
+\begin{enumerate}
+\item 用 fixed MPC-lite、BP-NMPS 或 SI-RPPO 产生专家轨迹，训练 diffusion policy 进行多步动作模仿。
+\item 在主动悬架环境中比较单步策略与多步力序列策略在在线推理频率、执行动作密度、动作平滑性、执行器跟踪误差和车身加速度指标上的差异。
+\item 将安全教师门控或投影约束加入 diffusion policy 的采样过程，形成面向主动悬架的安全多步策略网络。
+\end{enumerate}
+
+从毕业设计目标看，diffusion policy 不替代当前 SI-RPPO 的策略网络贡献，而是作为下一阶段的策略生成结构：当前论文先用 SI-RPPO 证明安全教师门控和投影感知策略的可部署性，后续再研究如何将这种安全约束迁移到多步力序列生成模型中。
+
+在时间安排上，BP-NMPS 的长预算与多场景实验应作为优先级最高的补充工作，因为它直接对应 MPC 参数学习目标；diffusion policy 更适合作为策略网络方向的后续拓展，用于说明未来如何从单步策略输出扩展到多步动作生成。
+
+\section{结论边界}
+\label{sec:claim-boundary}
+本文可有依据地声称：在已感知路面不平度预瞄可用的条件下，SPDF 已形成稳定的传统控制基线；BP-NMPS 能以保守方式学习 MPC-lite 参数调度，并通过部署门控避免劣化 fixed MPC-lite；SI-RPPO 通过安全教师门控和投影感知策略结构，使在线 PPO 在主动悬架执行器约束下更平滑、更安全、更可部署。
+
+若从高水平论文选题角度表述，SI-RPPO 的价值在于将主动悬架强化学习从单纯追求标量回报，推进到安全教师约束、动作可行性和部署平滑性共同建模的策略网络设计问题。该表述可以作为面向 CCF-A 级别论文的研究问题定位，但当前毕业设计应将其限定为可验证的原型证据和方法雏形；若进一步投稿高水平论文，还需要更长训练预算、更多随机种子、更复杂道路分布以及更强 SAC/TD3 变体对照。
+
+本文不应过度声称：
+\begin{itemize}
+\item BP-NMPS 已经全面替代 MPC。
+\item SI-RPPO 在所有道路、所有预瞄误差和所有 off-policy baseline 上全面最优。
+\item 当前结果已可直接支撑完整 CCF-A 投稿。
+\item 本文完成了端到端视觉--语言--动作主动悬架平台。
+\item diffusion policy 多步力序列生成已经完成正式实验验证。
+\end{itemize}

@@ -660,12 +660,21 @@ class MuJoCoFullCarEnv(gym.Env if gym is not None else object):
         power = 0.0
         for value, c in zip(self.last_corner_action, ("fl", "fr", "rl", "rr")):
             power += abs(float(value) * d[f"delta_dy_{c}"])
+        # === Reward 归一化常数（2026-06-16 标定，passive 跨场景 mean 的倒数）===
+        # 让每个物理量平方项归一到 ~O(1)，config 里的 reward 权重 = 真实语义优先级占比
+        _RNORM = {
+            "body_acc": 1.9449e+03,
+            "pitch_acc": 4.1925e+02,
+            "roll_acc": 1.1738e+03,
+            "suspension": 3.3782e+04,
+            "tire_load": 5.1730e-06,
+        }
         components = {
-            "body_acc": float(w["body_acc"] * d["ddzb"] ** 2),
-            "pitch_acc": float(w["pitch_acc"] * d["ddtheta"] ** 2),
-            "roll_acc": float(roll_w * d["ddroll"] ** 2),
-            "suspension": float(w["suspension"] * susp),
-            "tire_load": float(w["tire_load"] * tire),
+            "body_acc": float(w["body_acc"] * _RNORM["body_acc"] * d["ddzb"] ** 2),
+            "pitch_acc": float(w["pitch_acc"] * _RNORM["pitch_acc"] * d["ddtheta"] ** 2),
+            "roll_acc": float(roll_w * _RNORM["roll_acc"] * d["ddroll"] ** 2),
+            "suspension": float(w["suspension"] * _RNORM["suspension"] * susp),
+            "tire_load": float(w["tire_load"] * _RNORM["tire_load"] * tire),
             "control": float(w["control"] * control),
             "action_delta": float(w.get("action_delta", 0.0) * action_delta),
             "command_delta": float(w.get("command_delta", 0.0) * command_delta),
@@ -675,7 +684,14 @@ class MuJoCoFullCarEnv(gym.Env if gym is not None else object):
             "deviation": float(w.get("deviation", 0.0) * deviation),
         }
         self.last_reward_components = components
-        return -float(sum(components.values()))
+        raw_reward = -float(sum(components.values()))
+        # === 单步 reward clip（2026-06-16）防极端动作下 reward 尖峰污染 value/Q 估计 ===
+        clip_cfg = self.config.get("reward", {}).get("clip", None)
+        if clip_cfg is not None:
+            lo = float(clip_cfg.get("min", -200.0))
+            hi = float(clip_cfg.get("max", 0.0))
+            return float(np.clip(raw_reward, lo, hi))
+        return raw_reward
 
     def _safety(self, finite: bool) -> dict[str, Any]:
         state = self._state()
