@@ -39,6 +39,15 @@ def _relative_excess(value: float, reference: float, eps: float = 1e-6) -> float
     return max(0.0, float(value) - float(reference)) / max(abs(float(reference)), eps)
 
 
+def _sched_controller(config: dict) -> str:
+    """A2': 从 config 读调度的控制器名（默认整车 MPC-lite，半车走 mpc_parameter_scheduling）"""
+    return config.get("mpc_parameter_scheduling", {}).get("controller_name", "FULL_CAR_MPC_LITE")
+
+
+def _sched_section(config: dict) -> str:
+    return config.get("mpc_parameter_scheduling", {}).get("gain_section", "reduced_full_car_mpc")
+
+
 def _baseline_by_scenario(config: dict, scenario_limit: int | None) -> dict[str, dict]:
     scenarios = list(config.get("scenarios", []))
     if scenario_limit is not None:
@@ -49,7 +58,7 @@ def _baseline_by_scenario(config: dict, scenario_limit: int | None) -> dict[str,
         trial_config["scenarios"] = [scenario]
         score, metrics = _evaluate_gain_config(
             trial_config,
-            controller_name="FULL_CAR_MPC_LITE",
+            controller_name=_sched_controller(config),
             scenario_limit=1,
             score_weights=config.get("mpc_parameter_tuning", {}).get("score_weights"),
         )
@@ -355,7 +364,7 @@ def train_mpc_parameter_neural_policy(
         train_gate_env.close()
     train_fixed_score, train_fixed_metrics = _evaluate_gain_config(
         train_gate_config,
-        controller_name="FULL_CAR_MPC_LITE",
+        controller_name=_sched_controller(train_gate_config),
         scenario_limit=scenario_limit,
         score_weights=score_weights,
     )
@@ -384,7 +393,7 @@ def train_mpc_parameter_neural_policy(
     if deployment_gate_active:
         final_policy_score, final_policy_metrics = _evaluate_gain_config(
             eval_config,
-            controller_name="FULL_CAR_MPC_LITE",
+            controller_name=_sched_controller(eval_config),
             scenario_limit=eval_scenario_limit,
             score_weights=score_weights,
         )
@@ -419,7 +428,7 @@ def train_mpc_parameter_neural_policy(
         checkpoint_path,
     )
     best_config = env.config.copy()
-    best_config["reduced_full_car_mpc"] = best["gains"]
+    best_config[_sched_section(env.config)] = best["gains"]
     best_config_path = out_dir / "best_mpc_parameter_neural_policy_config.yaml"
     with best_config_path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(best_config, f, sort_keys=False, allow_unicode=True)

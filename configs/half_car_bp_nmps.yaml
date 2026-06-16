@@ -1,0 +1,29 @@
+# 半车版 BP-NMPS config（A2': 调度半车 MPC 代价权重）
+# 2026-06-16 Alma：BP-NMPS 从整车 MPC-lite 增益调度 → 半车 MPC 自适应代价权重调度
+inherits: default.yaml
+
+# A2' 调度配置：神经策略调度半车 MPC 的代价权重（舒适↔行程权衡）+ 控制/增量权重
+mpc_parameter_scheduling:
+  gain_section: mpc
+  controller_name: MPC
+  gain_keys:
+    - w_body       # 车身加速度权重（舒适）
+    - w_pitch      # 俯仰权重
+    - w_susp       # 悬架行程权重（限位）
+    - control_weight   # 控制力权重
+    - delta_weight     # 控制增量权重
+
+# 半车 MPC 基准参数（神经策略围绕这些做缩放，gate 失败回退到这）
+mpc:
+  horizon: 4
+  max_iter: 5
+  replan_interval: 1
+  w_body: 1.0
+  w_pitch: 0.4
+  w_susp: 30.0
+  w_tire: 1.0e-8
+  control_weight: 1.0e-6
+  delta_weight: 1.0e-6
+
+evaluation:
+  controllers: ["PASSIVE", "MPC"]

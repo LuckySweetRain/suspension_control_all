@@ -58,9 +58,15 @@ class MPCParameterPolicyEnv(gym.Env if gym is not None else object):
         self.scenario_limit = scenario_limit
         self.scale_low = float(scale_low)
         self.scale_high = float(scale_high)
+        # 可配置调度对象（A2': 半车 MPC 状态权重；默认整车 MPC-lite 增益，向后兼容）
+        sched_cfg = self.config.get("mpc_parameter_scheduling", {})
+        self.gain_section = sched_cfg.get("gain_section", "reduced_full_car_mpc")
+        self.gain_keys = list(sched_cfg.get("gain_keys", GAIN_KEYS))
+        if sched_cfg.get("controller_name"):
+            controller_name = sched_cfg["controller_name"]
         self.controller_name = controller_name
-        self.base_gains = dict(self.config.get("reduced_full_car_mpc", {}))
-        self.gain_dim = len(GAIN_KEYS)
+        self.base_gains = dict(self.config.get(self.gain_section, {}))
+        self.gain_dim = len(self.gain_keys)
         self.scenarios = list(self.config.get("scenarios", []))
         if self.scenario_limit is not None:
             self.scenarios = self.scenarios[: int(self.scenario_limit)]
@@ -97,7 +103,7 @@ class MPCParameterPolicyEnv(gym.Env if gym is not None else object):
         action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
         gains = self.action_to_gains(action)
         trial_config = copy.deepcopy(self.config)
-        trial_config["reduced_full_car_mpc"] = {**self.base_gains, **gains}
+        trial_config[self.gain_section] = {**self.base_gains, **gains}
         if self.active_scenario is not None:
             trial_config["scenarios"] = [self.active_scenario]
         score, scenario_metrics = _evaluate_gain_config(
@@ -119,10 +125,10 @@ class MPCParameterPolicyEnv(gym.Env if gym is not None else object):
         scale_mid = 0.5 * (self.scale_low + self.scale_high)
         scale_half = 0.5 * (self.scale_high - self.scale_low)
         scales = scale_mid + scale_half * action
-        return {key: float(self.base_gains.get(key, 0.0)) * float(scale) for key, scale in zip(GAIN_KEYS, scales)}
+        return {key: float(self.base_gains.get(key, 0.0)) * float(scale) for key, scale in zip(self.gain_keys, scales)}
 
     def _obs(self) -> np.ndarray:
-        base = np.asarray([float(self.base_gains.get(key, 0.0)) for key in GAIN_KEYS], dtype=np.float64)
+        base = np.asarray([float(self.base_gains.get(key, 0.0)) for key in self.gain_keys], dtype=np.float64)
         norm = base / np.maximum(np.abs(base), 1.0)
         road = self._scenario_features(self.active_scenario)
         meta = np.asarray(
@@ -195,7 +201,7 @@ class MPCParameterPolicyEnv(gym.Env if gym is not None else object):
             "last_metrics": self.last_metrics,
             "active_scenario": self.active_scenario.get("name", "") if self.active_scenario else "",
             "scenario_features": self._scenario_features(self.active_scenario).tolist(),
-            "gain_keys": list(GAIN_KEYS),
+            "gain_keys": list(self.gain_keys),
             "scale_low": self.scale_low,
             "scale_high": self.scale_high,
         }

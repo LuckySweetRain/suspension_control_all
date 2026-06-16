@@ -24,6 +24,11 @@ class MPCController(Controller):
         self.replan_interval = int(config["mpc"].get("replan_interval", 1))
         self.control_weight = float(config["mpc"].get("control_weight", 1e-7))
         self.delta_weight = float(config["mpc"].get("delta_weight", 1e-8))
+        # MPC cost 状态权重（参数化供 BP-NMPS A2' 自适应调度，2026-06-16）
+        self.w_body = float(config["mpc"].get("w_body", 1.0))
+        self.w_pitch = float(config["mpc"].get("w_pitch", 0.4))
+        self.w_susp = float(config["mpc"].get("w_susp", 30.0))
+        self.w_tire = float(config["mpc"].get("w_tire", 1e-8))
         self.prev_solution = np.zeros((self.horizon, 2), dtype=np.float64)
         self.step_count = 0
 
@@ -59,10 +64,10 @@ class MPCController(Controller):
                 u = np.clip(u_seq[k], -self.force_limit, self.force_limit)
                 d = self.model.derived(x, road, u)
                 total += (
-                    d["ddzb"] ** 2
-                    + 0.4 * d["ddtheta"] ** 2
-                    + 30.0 * (d["delta_yf"] ** 2 + d["delta_yr"] ** 2)
-                    + 1e-8 * (d["Fpf"] ** 2 + d["Fpr"] ** 2)
+                    self.w_body * d["ddzb"] ** 2
+                    + self.w_pitch * d["ddtheta"] ** 2
+                    + self.w_susp * (d["delta_yf"] ** 2 + d["delta_yr"] ** 2)
+                    + self.w_tire * (d["Fpf"] ** 2 + d["Fpr"] ** 2)
                     + self.control_weight * np.sum(u**2)
                     + self.delta_weight * np.sum((u - last_u) ** 2)
                 )
