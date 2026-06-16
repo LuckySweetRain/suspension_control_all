@@ -1,0 +1,75 @@
+# 半车版 SI-RPPO config（继承 default.yaml 的半车 + 归一化reward + clip）
+# 2026-06-16 Alma 协助：把 SI-RPPO 从 MuJoCo 整车切到数学半车
+inherits: default.yaml
+
+# residual prior 用半车 MPC（带预瞄，符合 road-preview 论文主线）
+residual_control:
+  enabled: true
+  prior: mpc
+  scale: 0.5
+
+# SI-RPPO 核心组件 1: offline imitation（BC 预训练 PPO）
+imitation:
+  enabled: true
+  dataset: datasets/expert/half_car_mpc.npz
+  epochs: 20
+  batch_size: 256
+  max_steps_per_epoch: null
+  residual_targets: true
+  eval_pretrained: true
+  anchor_enabled: true
+  anchor_initial_weight: 0.25
+  anchor_final_weight: 0.02
+  anchor_decay_episodes: 40
+  anchor_batch_size: 256
+  anchor_max_samples: 4096
+
+# SI-RPPO 核心组件 2: delta action 参数化
+policy_action_parameterization:
+  enabled: true
+  mode: delta
+  max_delta_fraction: 0.05
+  max_action_fraction: 0.75
+  safety_margin_scale: true
+  min_margin_scale: 0.25
+  safety_margin_power: 1.0
+
+# SI-RPPO 核心组件 3: safe-teacher improvement gate
+policy_improvement_gate:
+  enabled: true
+  teacher: passive
+  min_scale: 0.0
+  max_scale: 1.0
+  preview_rms_threshold: 0.10
+  preview_rms_softness: 0.08
+  accel_threshold: 1.2
+  accel_softness: 2.0
+  pitch_acc_scale: 0.2
+  safety_margin_scale: true
+  hard_margin: 0.04
+  soft_margin: 0.2
+
+# PPO 超参（SI-RPPO 风格：projection-aware losses）
+rl:
+  episodes: 200
+  eval_every: 10
+  save_every: 25
+  ppo:
+    lam: 0.95
+    clip_ratio: 0.12
+    train_epochs: 6
+    minibatch_size: 256
+    entropy_coef: 0.0005
+    value_coef: 0.5
+    projection_penalty_weight: 0.2
+    unsafe_penalty_weight: 1.0
+    action_delta_penalty_weight: 0.4
+    adaptive_constraint_weights: true
+    constraint_weight_lr: 0.5
+    projection_error_target: 0.18
+    unsafe_fraction_target: 0.0
+    action_delta_target: 0.02
+    max_constraint_weight: 3.0
+
+evaluation:
+  controllers: ["PASSIVE", "SPDF", "MPC"]

@@ -52,7 +52,8 @@ class IsoRoadProfile(BaseRoadProfile):
         w = rng.standard_normal(t.shape[0])
         z = np.zeros_like(t)
         for i in range(1, len(t)):
-            z[i] = z[i - 1] + (a * z[i - 1] + b * w[i - 1]) * self.dt
+            # Euler-Maruyama: drift*dt + diffusion*sqrt(dt)（修正 SDE 离散化，2026-06-16）
+            z[i] = z[i - 1] + a * z[i - 1] * self.dt + b * w[i - 1] * np.sqrt(self.dt)
         z -= z[0]
         self._t = t
         self._z = z

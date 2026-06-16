@@ -23,17 +23,14 @@ preview:
   dt: 0.01
 
 reward:
-  body_acc: 1.0
-  pitch_acc: 0.4
-  suspension: 30.0
-  tire_load: 1.0e-8
+  body_acc: 0.45
+  pitch_acc: 0.20
+  suspension: 0.25
+  tire_load: 0.10
   control: 0.05
-  action_delta: 0.0
-  command_delta: 0.0
-  actuator_tracking: 0.0
-  saturation: 0.0
-  energy: 0.0
-  deviation: 0.0
+  clip:
+    min: -200.0
+    max: 0.0
 
 mpc:
   horizon: 10

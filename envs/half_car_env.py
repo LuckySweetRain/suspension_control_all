@@ -67,6 +67,9 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         return self._obs(), self._info(0.0)
 
     def step(self, action):
+        # 兼容 SI-RPPO residual 接口：dict {"action":..., "prior_action":...}（2026-06-16）
+        if isinstance(action, dict):
+            action = action.get("action")
         action = self.model.clip_action(action)
         total_reward = 0.0
         for _ in range(self.substeps):
@@ -116,19 +119,32 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         preview = self.road.preview(self.t, self.speed, self.wheelbase, self.preview_steps, self.preview_dt)
         return np.concatenate([base, preview.reshape(-1) / self.road_scale]).astype(np.float32)
 
+    # 半车 reward 归一化常数（2026-06-16 标定，passive 跨场景 mean 的倒数）
+    _RNORM = {
+        "body_acc": 4.1464e+00,
+        "pitch_acc": 3.0152e-01,
+        "suspension": 2.0116e+03,
+        "tire_load": 1.8743e-07,
+    }
+
     def _reward(self, action: np.ndarray) -> float:
         w = self.config["reward"]
         d = self.last_derived
+        rn = self._RNORM
         susp = d["delta_yf"] ** 2 + d["delta_yr"] ** 2
         tire = d["Fpf"] ** 2 + d["Fpr"] ** 2
         control = float(np.sum(np.square(action / self.force_limit)))
-        return -float(
-            w["body_acc"] * d["ddzb"] ** 2
-            + w["pitch_acc"] * d["ddtheta"] ** 2
-            + w["suspension"] * susp
-            + w["tire_load"] * tire
+        raw = -float(
+            w["body_acc"] * rn["body_acc"] * d["ddzb"] ** 2
+            + w["pitch_acc"] * rn["pitch_acc"] * d["ddtheta"] ** 2
+            + w["suspension"] * rn["suspension"] * susp
+            + w["tire_load"] * rn["tire_load"] * tire
             + w["control"] * control
         )
+        clip_cfg = w.get("clip", None)
+        if clip_cfg is not None:
+            return float(np.clip(raw, float(clip_cfg.get("min", -200.0)), float(clip_cfg.get("max", 0.0))))
+        return raw
 
     def _info(self, reward: float, unsafe: bool = False) -> dict[str, Any]:
         road = np.asarray(self.road.pair(self.t, self.speed, self.wheelbase), dtype=np.float64)
