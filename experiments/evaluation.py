@@ -174,10 +174,12 @@ def make_controller(
         policy_safety_cfg = dict(config.get("policy_safety", {}))
         action_param_cfg = dict(config.get("policy_action_parameterization", {}))
         improvement_gate_cfg = dict(config.get("policy_improvement_gate", {}))
-        if policy_safety_cfg:
-            if residual_cfg.get("enabled", False):
-                action_param_cfg = {}
-                improvement_gate_cfg = {}
+        if residual_cfg.get("enabled", False):
+            # residual 分支自行处理 prior 叠加与 gate；策略侧不再二次参数化
+            action_param_cfg = {}
+            improvement_gate_cfg = {}
+        needs_wrap = bool(policy_safety_cfg) or bool(action_param_cfg.get("enabled", False)) or bool(improvement_gate_cfg.get("enabled", False))
+        if needs_wrap:
             return PolicySafetyController(controller, env, policy_safety_cfg, action_param_cfg, improvement_gate_cfg)
         return controller
     raise ValueError(f"Unknown controller: {name}")
