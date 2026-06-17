@@ -73,3 +73,9 @@ rl:
 
 evaluation:
   controllers: ["PASSIVE", "SPDF", "MPC"]
+
+# 安全限值（半车 gate 安全门控用；半车无 roll）。2026-06-17 修 safe gate delta=0 时补
+safety_limits:
+  max_suspension_travel: 0.25
+  max_pitch: 0.45
+  max_wheel_displacement: 1.0

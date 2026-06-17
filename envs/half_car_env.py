@@ -31,6 +31,12 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         self.preview_steps = int(config["preview"]["steps"])
         self.preview_dt = float(config["preview"].get("dt", self.control_dt))
         self.road_scale = float(config.get("road_scale", 0.1))
+        safety_cfg = dict(config.get("safety_limits", {}))
+        self.safety_limits = {
+            "max_suspension_travel": float(safety_cfg.get("max_suspension_travel", 0.25)),
+            "max_pitch": float(safety_cfg.get("max_pitch", 0.45)),
+            "max_wheel_displacement": float(safety_cfg.get("max_wheel_displacement", 1.0)),
+        }
         self.use_preview = use_preview
         self.params = HalfCarParams.from_config(config)
         self.model = HalfCarModel(self.params)
@@ -87,8 +93,9 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         reward = self._reward(action)
         total_reward += reward
         self.step_count += 1
-        finite = np.all(np.isfinite(self.state)) and np.all(np.isfinite(action))
-        unsafe = not finite or abs(self.last_derived["delta_yf"]) > 0.25 or abs(self.last_derived["delta_yr"]) > 0.25
+        finite = bool(np.all(np.isfinite(self.state)) and np.all(np.isfinite(action)))
+        self.last_safety = self._safety(finite)
+        unsafe = bool(self.last_safety["unsafe"])
         terminated = not finite
         truncated = self.step_count >= self.max_steps
         if unsafe and self.step_count > self.settle_steps:
@@ -151,6 +158,30 @@ class HalfCarEnv(gym.Env if gym is not None else object):
             return float(np.clip(raw, float(clip_cfg.get("min", -200.0)), float(clip_cfg.get("max", 0.0))))
         return raw
 
+    def _safety(self, finite: bool = True) -> dict[str, Any]:
+        d = self.last_derived
+        s = self.state
+        max_susp = float(max(abs(d["delta_yf"]), abs(d["delta_yr"])))
+        abs_pitch = float(abs(s[2]))
+        max_wheel = float(max(abs(s[4]), abs(s[6])))
+        lim = self.safety_limits
+        checks = {
+            "finite": bool(finite),
+            "suspension_travel": bool(max_susp <= lim["max_suspension_travel"]),
+            "pitch": bool(abs_pitch <= lim["max_pitch"]),
+            "wheel_displacement": bool(max_wheel <= lim["max_wheel_displacement"]),
+        }
+        violations = [name for name, ok in checks.items() if not ok]
+        return {
+            "unsafe": bool(violations),
+            "checks": checks,
+            "violations": violations,
+            "max_abs_suspension_travel": max_susp,
+            "max_abs_wheel_displacement": max_wheel,
+            "abs_pitch": abs_pitch,
+            "limits": dict(lim),
+        }
+
     def _info(self, reward: float, unsafe: bool = False) -> dict[str, Any]:
         road = np.asarray(self.road.pair(self.t, self.speed, self.wheelbase), dtype=np.float64)
         preview = self.road.preview(self.t, self.speed, self.wheelbase, self.preview_steps, self.preview_dt)
@@ -164,5 +195,6 @@ class HalfCarEnv(gym.Env if gym is not None else object):
             "derived": dict(self.last_derived),
             "reward": float(reward),
             "unsafe": bool(unsafe),
+            "safety": dict(getattr(self, "last_safety", None) or self._safety()),
             "scenario": self.scenario.get("name", ""),
         }

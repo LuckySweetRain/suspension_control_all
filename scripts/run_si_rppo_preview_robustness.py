@@ -275,8 +275,9 @@ def _write_report(summary: pd.DataFrame, pairwise: pd.DataFrame, out_dir: Path, 
             return f"{numeric:.{digits}f}"
 
         for _, row in pairwise.iterrows():
+            comparison_label = str(row['Comparison']).replace('_', r'\_')
             latex_lines.append(
-                f"{str(row['Comparison']).replace('_', r'\_')} & "
+                f"{comparison_label} & "
                 f"{fmt(row.get('EpisodeReturnDelta'), 2)} & "
                 f"{fmt(row.get('UnsafeStepsDelta'), 2)} & "
                 f"{fmt(row.get('BodyAccRMS_mps2Delta'), 3)} & "
