@@ -176,6 +176,8 @@ def evaluate_agent(agent, config: dict) -> dict:
     residual_cfg = dict(config.get("residual_control", {}))
     residual_enabled = bool(residual_cfg.get("enabled", False))
     policy_safety_cfg = dict(config.get("policy_safety", {}))
+    action_param_cfg = dict(config.get("policy_action_parameterization", {}))
+    improvement_gate_cfg = dict(config.get("policy_improvement_gate", {}))
     for scenario in config["scenarios"]:
         env = make_env(config, scenario=scenario, use_preview=True)
         obs, info = env.reset()
@@ -198,6 +200,8 @@ def evaluate_agent(agent, config: dict) -> dict:
             else:
                 action = residual_action
                 prior_action = None
+                action = parameterize_policy_action(action, env, info, action_param_cfg)
+                action, _ = policy_improvement_gate(action, env, info, improvement_gate_cfg)
             action = shield_policy_action(action, env, info, policy_safety_cfg)
             step_action = {"action": action, "prior_action": prior_action} if residual_enabled else action
             obs, reward, terminated, truncated, info = env.step(step_action)
