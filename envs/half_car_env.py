@@ -70,6 +70,11 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         # 兼容 SI-RPPO residual 接口：dict {"action":..., "prior_action":...}（2026-06-16）
         if isinstance(action, dict):
             action = action.get("action")
+        # 防御性：展平 + 截断到 2 维（半车前后作动器力）。SI-RPPO delta-action 链路
+        # 偶尔返回嵌套/多维数组，这里统一规整，避免 model.derived 解包崩溃（2026-06-17）
+        action = np.asarray(action, dtype=np.float64).reshape(-1)
+        if action.shape[0] != 2:
+            action = action[:2] if action.shape[0] > 2 else np.pad(action, (0, 2 - action.shape[0]))
         action = self.model.clip_action(action)
         total_reward = 0.0
         for _ in range(self.substeps):
