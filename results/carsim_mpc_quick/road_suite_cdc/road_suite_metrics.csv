@@ -1,0 +1,25 @@
+RoadId,Road,Metric,Passive,PreviewMPC,ImprovementPercent,Unit
+bump_pothole,"Bump--pothole, +50/-50 mm",body_acc_rms_mps2,0.973407523994767,0.986456275382218,-1.34052296348608,m/s^2
+bump_pothole,"Bump--pothole, +50/-50 mm",body_acc_peak_mps2,8.05794397898416,8.29786900509476,-2.97749682470299,m/s^2
+bump_pothole,"Bump--pothole, +50/-50 mm",pitch_acc_rms_radps2,0.0183280501553882,0.0191847486485522,-4.67424786543439,rad/s^2
+bump_pothole,"Bump--pothole, +50/-50 mm",pitch_acc_peak_radps2,0.183915148358375,0.180768906060018,1.71070318374572,rad/s^2
+bump_pothole,"Bump--pothole, +50/-50 mm",max_front_jounce_m,0.0504101090236821,0.0514604212505898,-2.08353492434284,m
+bump_pothole,"Bump--pothole, +50/-50 mm",max_rear_jounce_m,0.0418761750834013,0.0364063887905228,13.0618096853037,m
+bump_pothole,"Bump--pothole, +50/-50 mm",dynamic_tire_load_rms_N,677.270213995913,700.211105787712,-3.38725833762082,N
+bump_pothole,"Bump--pothole, +50/-50 mm",max_corner_force_N,5000,5000,0,N
+class_b,"CarSim Class B #1",body_acc_rms_mps2,1.34592165839337,1.40362918490697,-4.28758435929199,m/s^2
+class_b,"CarSim Class B #1",body_acc_peak_mps2,5.01811448813215,5.23473532984867,-4.31677759104188,m/s^2
+class_b,"CarSim Class B #1",pitch_acc_rms_radps2,0.0282602953397864,0.02864155428718,-1.34909753351654,rad/s^2
+class_b,"CarSim Class B #1",pitch_acc_peak_radps2,0.0981419020845604,0.0930135456233594,5.22545044702956,rad/s^2
+class_b,"CarSim Class B #1",max_front_jounce_m,0.0337748563151355,0.0372515604347002,-10.293764352764,m
+class_b,"CarSim Class B #1",max_rear_jounce_m,0.0260125158088945,0.0250289708978226,3.7810449335148,m
+class_b,"CarSim Class B #1",dynamic_tire_load_rms_N,993.485808471958,1064.80322435264,-7.1785037362915,N
+class_b,"CarSim Class B #1",max_corner_force_N,2082.36072292965,2351.08931832544,-12.9049973156292,N
+class_c,"CarSim Class C #1",body_acc_rms_mps2,2.68780650755384,2.775399117176,-3.25888821892438,m/s^2
+class_c,"CarSim Class C #1",body_acc_peak_mps2,12.1224548053157,10.3273495088558,14.8081005480236,m/s^2
+class_c,"CarSim Class C #1",pitch_acc_rms_radps2,0.0561009673528946,0.0563806260018137,-0.498491669778119,rad/s^2
+class_c,"CarSim Class C #1",pitch_acc_peak_radps2,0.159215864310197,0.184473024707279,-15.8634697029148,rad/s^2
+class_c,"CarSim Class C #1",max_front_jounce_m,0.0674027485046737,0.0777003370889876,-15.277698332435,m
+class_c,"CarSim Class C #1",max_rear_jounce_m,0.0526487468097288,0.0578448753436945,-9.86942491289365,m
+class_c,"CarSim Class C #1",dynamic_tire_load_rms_N,1965.13632754122,2055.94857226192,-4.62116767411894,N
+class_c,"CarSim Class C #1",max_corner_force_N,3942.02007735334,4534.7634789851,-15.0365393884479,N
