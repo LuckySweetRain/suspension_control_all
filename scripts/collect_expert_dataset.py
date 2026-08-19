@@ -144,7 +144,7 @@ def collect_expert_dataset(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/mujoco_full_car_residual.yaml")
+    parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--out", default="datasets/expert/full_car_mpc_lite.npz")
     parser.add_argument("--expert", default="FULL_CAR_MPC_LITE")
     parser.add_argument("--episodes", type=int, default=4)

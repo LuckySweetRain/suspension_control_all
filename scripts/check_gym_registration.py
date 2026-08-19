@@ -21,7 +21,7 @@ def check_registration(config_path: Path | None = None, smoke: bool = False) -> 
         import gymnasium as gym
 
         kwargs = {"config_path": str(config_path)} if config_path else {}
-        env = gym.make(GYM_IDS["mujoco_full_car"], scenario_index=0, use_preview=True, width=160, height=90, **kwargs)
+        env = gym.make(GYM_IDS["half_car"], scenario_index=0, use_preview=True, **kwargs)
         try:
             obs, info = env.reset(seed=42)
             action = env.action_space.sample()
@@ -42,7 +42,7 @@ def check_registration(config_path: Path | None = None, smoke: bool = False) -> 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/mujoco_full_car_corner.yaml")
+    parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--out", default=None)
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()

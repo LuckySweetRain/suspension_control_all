@@ -1,21 +1,54 @@
-# 半车版 SI-RPPO config（继承 default.yaml 的半车 + 归一化reward + clip）
-# 2026-06-16 Alma 协助：把 SI-RPPO 从 MuJoCo 整车切到数学半车
+# SI-RPPO config（半车版）- v3
+# 2026-06-21
+# 核心设计：
+#   1. 策略直接输出绝对力，由 policy_safety 限制变化率保证平滑
+#   2. 预瞄 20 步 × 0.05s = 1.0s，80km/h 时覆盖 22m
+#   3. 训练时 BC pretrain + BC anchor 参考专家（SPDF/MPC）
+#   4. 部署时 improvement gate (passive teacher) + safety shield
 inherits: default.yaml
 
-# residual prior 用半车 MPC（带预瞄，符合 road-preview 论文主线）
-residual_control:
-  enabled: true
-  prior: mpc
-  scale: 0.5
+# 预瞄：450 步 × 0.002s = 0.9s，22m/s 时覆盖 20m，每步间距 4.44cm
+preview:
+  steps: 450
+  dt: 0.002
 
-# SI-RPPO 核心组件 1: offline imitation（BC 预训练 PPO）
+action_in_observation: false
+
+# 取消 delta 参数化：策略直接输出绝对力，BC 预训练目标一致
+policy_action_parameterization:
+  enabled: false
+
+# 安全屏蔽层：限制单步动作变化率 + 安全裕度收缩
+policy_safety:
+  enabled: true
+  max_action_fraction: 1.0
+  max_delta_fraction: 0.15
+  hard_margin: 0.02
+  soft_margin: 0.10
+
+# safe-teacher improvement gate
+policy_improvement_gate:
+  enabled: true
+  teacher: passive
+  min_scale: 0.0
+  max_scale: 0.5
+  preview_rms_threshold: 0.05
+  preview_rms_softness: 0.06
+  accel_threshold: 0.8
+  accel_softness: 1.0
+  pitch_acc_scale: 0.2
+  safety_margin_scale: true
+  hard_margin: 0.04
+  soft_margin: 0.2
+
+# 专家用于训练（BC 预训练 + 锚定正则），部署时不运行
 imitation:
   enabled: true
-  dataset: datasets/expert/half_car_mpc.npz
+  dataset: datasets/expert/half_car_spdf.npz
   epochs: 20
   batch_size: 256
-  max_steps_per_epoch: null
-  residual_targets: true
+  max_steps_per_epoch: 200
+  residual_targets: false
   eval_pretrained: true
   anchor_enabled: true
   anchor_initial_weight: 0.25
@@ -24,40 +57,17 @@ imitation:
   anchor_batch_size: 256
   anchor_max_samples: 4096
 
-# SI-RPPO 核心组件 2: delta action 参数化
-policy_action_parameterization:
-  enabled: true
-  mode: delta
-  max_delta_fraction: 0.05
-  max_action_fraction: 0.75
-  safety_margin_scale: true
-  min_margin_scale: 0.25
-  safety_margin_power: 1.0
-
-# SI-RPPO 核心组件 3: safe-teacher improvement gate
-policy_improvement_gate:
-  enabled: true
-  teacher: passive
-  min_scale: 0.0
-  max_scale: 1.0
-  preview_rms_threshold: 0.10
-  preview_rms_softness: 0.08
-  accel_threshold: 1.2
-  accel_softness: 2.0
-  pitch_acc_scale: 0.2
-  safety_margin_scale: true
-  hard_margin: 0.04
-  soft_margin: 0.2
-
-# PPO 超参（SI-RPPO 风格：projection-aware losses）
+# PPO 超参
 rl:
-  episodes: 200
+  obs_dim_base: 14
+  episodes: 400
   eval_every: 10
-  save_every: 25
+  save_every: 50
+  batch_size: 256
   ppo:
     lam: 0.95
     clip_ratio: 0.12
-    train_epochs: 6
+    train_epochs: 8
     minibatch_size: 256
     entropy_coef: 0.0005
     value_coef: 0.5
@@ -74,8 +84,5 @@ rl:
 evaluation:
   controllers: ["PASSIVE", "SPDF", "MPC"]
 
-# 安全限值（半车 gate 安全门控用；半车无 roll）。2026-06-17 修 safe gate delta=0 时补
 safety_limits:
-  max_suspension_travel: 0.25
-  max_pitch: 0.45
-  max_wheel_displacement: 1.0
+  max_suspension_travel: 0.08

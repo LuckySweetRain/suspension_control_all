@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="bgBlueWash" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1" />
+      <stop offset="100%" stop-color="#EAF2FF" stop-opacity="0.75" />
+    </linearGradient>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#4472C4" />
+    </marker>
+  </defs>
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="url(#bgBlueWash)" />
+    <path d="M120 120H1160 M120 600H1160" stroke="#D9E2EF" stroke-width="1" />
+  </g>
+  <g id="statement">
+    <text x="120" y="172" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="18" fill="#7A869A">从 SPDF 到 SI-RPPO 的动机</text>
+    <text font-size="48" fill="#031D40" font-family="SimHei, Arial, sans-serif" x="120" y="282">模型控制给出强先验，</text><text font-size="48" fill="#031D40" font-family="SimHei, Arial, sans-serif" x="120" y="348">但道路预瞄和复杂工况</text><text font-size="48" fill="#031D40" font-family="SimHei, Arial, sans-serif" x="120" y="414">需要学习型控制补足。</text><text font-size="21" fill="#4B5563" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="120" y="520">因此，SPDF 不再只是对照基线，而成为 SI-RPPO 的安全教师轨迹来源。</text></g>
+  <g id="bridge-line">
+    <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M846,214 H1054 A6,6 0 0 1 1060,220 V290 A6,6 0 0 1 1054,296 H846 A6,6 0 0 1 840,290 V220 A6,6 0 0 1 846,214 Z" />
+    <text x="950" y="250" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40" text-anchor="middle">SPDF</text>
+    <text x="950" y="278" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="15" fill="#4B5563" text-anchor="middle">稳定先验</text>
+    <line x1="950" y1="296" x2="950" y2="392" stroke="#4472C4" stroke-width="3" marker-end="url(#arrowBlue)" />
+    <path fill="#F3F6FA" stroke="#D9E2EF" stroke-width="1" d="M846,392 H1054 A6,6 0 0 1 1060,398 V468 A6,6 0 0 1 1054,474 H846 A6,6 0 0 1 840,468 V398 A6,6 0 0 1 846,392 Z" />
+    <text x="950" y="428" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40" text-anchor="middle">SI-RPPO</text>
+    <text x="950" y="456" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="15" fill="#4B5563" text-anchor="middle">预瞄学习 + 安全门控</text>
+  </g>
+  <g id="footer">
+    <text x="120" y="642" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="12" fill="#7A869A">08 / 16</text>
+  </g>
+</svg>

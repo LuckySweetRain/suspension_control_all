@@ -19,14 +19,12 @@ def _error(errors: list[str], message: str):
 
 
 def _expected_dims(config: dict[str, Any]) -> tuple[int, int, int]:
-    full_cfg = config.get("full_car", {})
-    action_mode = str(full_cfg.get("action_mode", "axle")).lower()
-    preview_mode = str(full_cfg.get("preview_mode", "axle")).lower()
-    act_dim = 4 if action_mode in {"corner", "four_corner"} else 2
-    preview_token_dim = 4 if preview_mode in {"corner", "four_corner"} else 2
+    act_dim = 2  # 半车前后作动器
+    preview_token_dim = 2  # 前后轴预瞄
+    action_in_obs = bool(config.get("action_in_observation", False))
     history_cfg = dict(config.get("observation", {}).get("history", {}))
     history_steps = int(history_cfg.get("steps", 0)) if history_cfg.get("enabled", False) else 0
-    obs_dim_base = 14 + history_steps * (14 + 2 * act_dim)
+    obs_dim_base = 14 + (2 if action_in_obs else 0) + history_steps * (14 + 2 * act_dim)
     return act_dim, preview_token_dim, obs_dim_base
 
 
@@ -72,17 +70,10 @@ def validate_config(config_path: Path, check_roads: bool = True) -> dict:
     if history_cfg.get("enabled", False) and int(history_cfg.get("steps", 0)) <= 0:
         _error(errors, "observation.history.steps must be positive when history is enabled")
 
-    if engine in {"mujoco_full", "mujoco_full_car", "full_car"}:
-        safety = config.get("safety_limits", {})
-        for key in ("max_suspension_travel", "max_pitch", "max_roll", "max_wheel_displacement"):
-            if float(safety.get(key, 0.0)) <= 0.0:
-                _error(errors, f"safety_limits.{key} must be positive for full-car MuJoCo training")
-        actuator = config.get("actuator", {})
-        if actuator.get("enabled", False):
-            if float(actuator.get("time_constant", 0.0)) < 0.0:
-                _error(errors, "actuator.time_constant must be non-negative")
-            if float(actuator.get("rate_limit", 0.0)) <= 0.0:
-                _error(errors, "actuator.rate_limit must be positive when actuator.enabled=true")
+    safety = config.get("safety_limits", {})
+    for key in ("max_suspension_travel",):
+        if float(safety.get(key, 0.0)) <= 0.0:
+            _error(errors, f"safety_limits.{key} must be positive for half-car training")
 
     sampling = config.get("scenario_sampling", {})
     sampling_mode = str(sampling.get("mode", "cycle")).lower()
@@ -144,7 +135,7 @@ def validate_config(config_path: Path, check_roads: bool = True) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/mujoco_full_car_corner.yaml")
+    parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--out", default=None)
     parser.add_argument("--skip-road-check", action="store_true")
     args = parser.parse_args()

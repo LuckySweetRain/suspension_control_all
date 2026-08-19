@@ -10,7 +10,8 @@ mpc_parameter_scheduling:
     - w_body       # 车身加速度权重（舒适）
     - w_pitch      # 俯仰权重
     - w_susp       # 悬架行程权重（限位）
-    - control_weight   # 控制力权重
+    - w_tire       # 轮胎动载荷权重
+    - w_control    # 控制力权重
     - delta_weight     # 控制增量权重
 
 # 半车 MPC 基准参数（神经策略围绕这些做缩放，gate 失败回退到这）
@@ -18,12 +19,13 @@ mpc:
   horizon: 4
   max_iter: 5
   replan_interval: 1
-  w_body: 1.0
-  w_pitch: 0.4
-  w_susp: 30.0
-  w_tire: 1.0e-8
-  control_weight: 1.0e-6
-  delta_weight: 1.0e-6
+  w_body: 0.45
+  w_pitch: 0.20
+  w_susp: 0.25
+  w_tire: 0.10
+  w_control: 0.05
+  control_weight: 0.05
+  delta_weight: 0.0
 
 evaluation:
   controllers: ["PASSIVE", "MPC"]

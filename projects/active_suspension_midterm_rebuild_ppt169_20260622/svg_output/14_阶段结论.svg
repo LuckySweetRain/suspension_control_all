@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+    <path d="M56 112H1224 M56 650H1224" stroke="#D9E2EF" stroke-width="1"/>
+    <rect x="56" y="140" width="8" height="420" fill="#031D40"/>
+  </g>
+  <g id="header">
+    <text x="56" y="72" font-family="SimHei, Arial, sans-serif" font-size="34" fill="#031D40">阶段结论</text>
+    <text x="1224" y="72" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="13" fill="#7A869A" text-anchor="end">14 / 16</text>
+  </g>
+  <g id="main-message">
+    <text x="106" y="194" font-family="SimHei, Arial, sans-serif" font-size="42" fill="#031D40">
+      <tspan x="106" dy="0">两条主线已经打通，</tspan>
+      <tspan x="106" dy="58">研究重心从“能控”转向“鲁棒可用”。</tspan>
+    </text>
+    <path d="M106 314H1110" stroke="#D9E2EF" stroke-width="1"/>
+  </g>
+  <g id="evidence">
+    <use data-icon="tabler-outline/check" x="106" y="354" width="30" height="30" fill="#0F766E" stroke-width="2"/>
+    <text x="154" y="378" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="20" fill="#1D2430">SPDF 完成方法设计、稳定性分析和论文发表，形成强减振理论基准。</text>
+    <use data-icon="tabler-outline/check" x="106" y="414" width="30" height="30" fill="#0F766E" stroke-width="2"/>
+    <text x="154" y="438" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="20" fill="#1D2430">统一仿真平台覆盖模型、路况、控制器、训练和评估全流程。</text>
+    <use data-icon="tabler-outline/check" x="106" y="474" width="30" height="30" fill="#0F766E" stroke-width="2"/>
+    <text x="154" y="498" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="20" fill="#1D2430">SI-RPPO 已验证示教初始化与安全门控对回报和俯仰抑制的提升。</text>
+  </g>
+  <g id="next-focus">
+    <rect x="106" y="556" width="1004" height="58" rx="6" fill="#FFF1F2" stroke="#D9E2EF" stroke-width="1"/>
+    <text x="138" y="592" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#B91C1C">下一阶段：</text>
+    <text x="250" y="592" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="18" fill="#1D2430">参数鲁棒性、预瞄误差、能耗折中和实时安全验证。</text>
+  </g>
+  <g id="footer">
+    <text x="56" y="682" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="12" fill="#7A869A">阶段结论用于承接已完成成果，并引出当前问题与后续计划</text>
+  </g>
+</svg>

@@ -7,7 +7,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from controllers import MPCController, NeuralMPCParameterController, PIDController, ReducedFullCarPreviewController, RLTransformerController, SPDFController
+from controllers import MPCController, PIDController, RLTransformerController, SPDFController
 from controllers.prior import (
     adapt_action_to_env,
     compute_prior_action,
@@ -18,7 +18,7 @@ from controllers.prior import (
     shield_policy_action,
     shield_residual_action,
 )
-from envs import HalfCarEnv, MuJoCoFullCarEnv, MuJoCoVehicleEnv
+from envs import HalfCarEnv
 
 
 class PassiveController:
@@ -131,11 +131,6 @@ class PolicySafetyController:
 
 
 def make_env(config: dict, scenario: dict, use_preview: bool = True):
-    engine = str(config.get("environment", {}).get("engine", "python")).lower()
-    if engine in {"mujoco_full", "mujoco_full_car", "full_car"}:
-        return MuJoCoFullCarEnv(config, scenario=scenario, use_preview=use_preview)
-    if engine in {"mujoco", "mujoco_vehicle"}:
-        return MuJoCoVehicleEnv(config, scenario=scenario, use_preview=use_preview)
     return HalfCarEnv(config, scenario=scenario, use_preview=use_preview)
 
 
@@ -154,15 +149,15 @@ def make_controller(
     if key == "pid":
         return PIDController(env.params, env.control_dt, env.force_limit)
     if key == "spdf":
-        return SPDFController(env.params, env.control_dt)
+        return SPDFController(env.params, env.control_dt, config=config)
     if key == "mpc":
         if not hasattr(env, "model"):
             raise ValueError("MPC evaluation requires the Python HalfCarEnv model.")
         return MPCController(env.model, config)
-    if key in {"full_car_mpc_lite", "mpc_lite", "lqr", "lpv"}:
-        return ReducedFullCarPreviewController(env, config)
+    if key in {"mpc_lite", "lqr", "lpv"}:
+        raise ValueError(f"Controller {key} is not supported in half-car evaluation.")
     if key in {"bp_nmps", "neural_mpc_parameter", "mpc_parameter_policy"}:
-        return NeuralMPCParameterController(env, config, checkpoint=checkpoint)
+        raise ValueError(f"Controller '{key}' is not supported in half-car mode.")
     if key in {"td3", "ddpg", "sac", "ppo", "rl"}:
         rl = RLTransformerController(config, algorithm=algorithm or key, checkpoint=checkpoint)
         residual_cfg = dict(config.get("residual_control", {}))
@@ -178,7 +173,11 @@ def make_controller(
             # residual 分支自行处理 prior 叠加与 gate；策略侧不再二次参数化
             action_param_cfg = {}
             improvement_gate_cfg = {}
-        needs_wrap = bool(policy_safety_cfg) or bool(action_param_cfg.get("enabled", False)) or bool(improvement_gate_cfg.get("enabled", False))
+        needs_wrap = (
+            bool(policy_safety_cfg.get("enabled", False))
+            or bool(action_param_cfg.get("enabled", False))
+            or bool(improvement_gate_cfg.get("enabled", False))
+        )
         if needs_wrap:
             return PolicySafetyController(controller, env, policy_safety_cfg, action_param_cfg, improvement_gate_cfg)
         return controller
@@ -200,6 +199,7 @@ def rollout(env: HalfCarEnv, controller, use_preview: bool) -> dict:
         d = info["derived"]
         state = info["state"]
         road = info["road"]
+        executed_action = np.asarray(info.get("action", action), dtype=np.float64).reshape(-1)
         row = {
                 "time": info["time"],
                 "zb": state[0],
@@ -216,8 +216,8 @@ def rollout(env: HalfCarEnv, controller, use_preview: bool) -> dict:
                 "delta_yr": d["delta_yr"],
                 "Fpf": d["Fpf"],
                 "Fpr": d["Fpr"],
-                "Uaf": d.get("Uaf", action[0]),
-                "Uar": d.get("Uar", action[1] if len(action) > 1 else 0.0),
+                "Uaf": d.get("Uaf", executed_action[0]),
+                "Uar": d.get("Uar", executed_action[1] if len(executed_action) > 1 else 0.0),
                 "reward": reward,
                 "unsafe": int(info["unsafe"]),
                 "preview_used": int(use_preview),
@@ -261,6 +261,10 @@ def rollout(env: HalfCarEnv, controller, use_preview: bool) -> dict:
             row["policy_projection_delta_rms"] = float(controller.last_projection_delta_rms)
         if hasattr(controller, "last_improvement_gate"):
             row["policy_improvement_gate"] = float(controller.last_improvement_gate)
+        if hasattr(controller, "last_reference"):
+            for ref_name, value in dict(controller.last_reference).items():
+                if np.isscalar(value):
+                    row[f"reference_{ref_name}"] = float(value)
         if hasattr(controller, "deployment_gate_active"):
             row["mpc_param_deployment_gate"] = float(controller.deployment_gate_active)
         if hasattr(controller, "last_policy_action"):
@@ -383,10 +387,6 @@ def evaluate_all(config: dict, checkpoints: str | dict[str, str] | None, result_
             is_rl = controller_name.lower() in rl_checkpoints
             use_preview = is_rl or controller_name.lower() in set(config["preview"]["enabled_for"])
             controller_config = deepcopy(config)
-            if controller_name.lower() in {"pid", "spdf"}:
-                # Match active_suspension_sim.slx: classical controllers update at
-                # the fixed solver step, while MPC/RL use the preview/control step.
-                controller_config["control_dt"] = controller_config["dt"]
             env = make_env(controller_config, scenario=scenario, use_preview=use_preview)
             algorithm = controller_name.lower() if is_rl else None
             checkpoint = rl_checkpoints.get(algorithm) if algorithm else None

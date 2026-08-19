@@ -29,15 +29,13 @@ def make_prior_controller(name: str, env, config: dict):
     if key == "pid":
         return PIDController(env.params, env.control_dt, env.force_limit)
     if key == "spdf":
-        return SPDFController(env.params, env.control_dt)
+        return SPDFController(env.params, env.control_dt, config=config)
     if key == "mpc":
         if not hasattr(env, "model"):
             raise ValueError("MPC prior requires the Python HalfCarEnv model.")
         return MPCController(env.model, config)
     if key in {"full_car_mpc_lite", "mpc_lite", "lqr", "lpv"}:
-        from .reduced_full_car import ReducedFullCarPreviewController
-
-        return ReducedFullCarPreviewController(env, config)
+        raise ValueError(f"Prior controller '{key}' is not supported in half-car mode.")
     raise ValueError(f"Unknown prior controller: {name}")
 
 
@@ -57,6 +55,8 @@ def safety_margin(info: dict) -> float:
         ("abs_pitch", "max_pitch"),
         ("abs_roll", "max_roll"),
         ("max_abs_wheel_displacement", "max_wheel_displacement"),
+        ("max_abs_front_tire_dynamic_load", "max_front_tire_dynamic_load"),
+        ("max_abs_rear_tire_dynamic_load", "max_rear_tire_dynamic_load"),
     ):
         limit = float(limits.get(limit_key, 0.0))
         if limit > 0.0:
@@ -123,6 +123,9 @@ def shield_residual_action(residual_action: np.ndarray, env, info: dict, cfg: di
 def shield_policy_action(action: np.ndarray, env, info: dict, cfg: dict) -> np.ndarray:
     safety_cfg = dict(cfg or {})
     filtered = adapt_action_to_env(action, env).astype(np.float64)
+    if not safety_cfg.get("enabled", False):
+        return filtered.astype(np.float32)
+
     force_limit = float(getattr(env, "force_limit", np.inf))
     max_fraction = float(safety_cfg.get("max_action_fraction", 1.0))
     if np.isfinite(force_limit) and max_fraction > 0.0:
@@ -134,9 +137,6 @@ def shield_policy_action(action: np.ndarray, env, info: dict, cfg: dict) -> np.n
         previous = adapt_action_to_env(previous_action, env).astype(np.float64)
         max_delta = max(0.0, float(max_delta_fraction)) * force_limit
         filtered = np.clip(filtered, previous - max_delta, previous + max_delta)
-
-    if not safety_cfg.get("enabled", False):
-        return filtered.astype(np.float32)
 
     margin = safety_margin(info)
     hard_margin = float(safety_cfg.get("hard_margin", 0.0))

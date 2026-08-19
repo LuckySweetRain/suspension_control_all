@@ -59,7 +59,7 @@ def import_road_directory(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     if base_config is None:
-        base_config = ROOT / "configs" / "mujoco_full_car_corner.yaml"
+        base_config = ROOT / "configs" / "default.yaml"
     config = load_config(base_config)
 
     scenarios = []
@@ -96,7 +96,7 @@ def import_road_directory(
 
     config["scenarios"] = scenarios
     config.setdefault("evaluation", {})["controllers"] = ["PASSIVE"]
-    config_path = out_dir / "mujoco_full_car_imported_roads.yaml"
+    config_path = out_dir / "imported_roads.yaml"
     manifest_path = out_dir / "imported_road_manifest.json"
     with config_path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False, allow_unicode=True)

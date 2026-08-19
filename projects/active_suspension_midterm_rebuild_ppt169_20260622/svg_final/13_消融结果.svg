@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+    <path d="M56 112H1224 M56 650H1224" stroke="#D9E2EF" stroke-width="1" />
+  </g>
+  <g id="header">
+    <text x="56" y="72" font-family="SimHei, Arial, sans-serif" font-size="34" fill="#031D40">消融实验说明：示教初始化和安全门控带来主要收益</text>
+    <text x="1224" y="72" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#7A869A" text-anchor="end">13 / 16</text>
+  </g>
+  <g id="ablation-table">
+    <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M70,136 H758 A6,6 0 0 1 764,142 V524 A6,6 0 0 1 758,530 H70 A6,6 0 0 1 64,524 V142 A6,6 0 0 1 70,136 Z" />
+    <path fill="#031D40" d="M70,136 H758 A6,6 0 0 1 764,142 V174 A6,6 0 0 1 758,180 H70 A6,6 0 0 1 64,174 V142 A6,6 0 0 1 70,136 Z" />
+    <text x="92" y="164" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF">指标</text>
+    <text x="410" y="164" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">PPO scratch</text>
+    <text x="610" y="164" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">SI-RPPO</text>
+    <path d="M320 136V530 M500 136V530" stroke="#D9E2EF" stroke-width="1" />
+    <path d="M64 180H764 M64 236H764 M64 292H764 M64 348H764 M64 404H764 M64 460H764" stroke="#E8EEF7" stroke-width="1" />
+    <text x="92" y="215" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">最终评估回报</text>
+    <text x="410" y="215" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#4B5563" text-anchor="middle">-761.55</text>
+    <path fill="#EAF2FF" d="M552,192 H668 A4,4 0 0 1 672,196 V218 A4,4 0 0 1 668,222 H552 A4,4 0 0 1 548,218 V196 A4,4 0 0 1 552,192 Z" />
+    <text x="610" y="215" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" font-weight="700" fill="#031D40" text-anchor="middle">-577.97</text>
+    <text x="92" y="271" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">车身加速度 RMS</text>
+    <text x="410" y="271" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#4B5563" text-anchor="middle">0.274</text>
+    <text x="610" y="271" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" font-weight="700" fill="#031D40" text-anchor="middle">0.203</text>
+    <text x="690" y="271" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#0F766E" text-anchor="middle">下降 25.8%</text>
+    <text x="92" y="327" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">俯仰加速度 RMS</text>
+    <text x="410" y="327" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#4B5563" text-anchor="middle">1.192</text>
+    <text x="610" y="327" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" font-weight="700" fill="#031D40" text-anchor="middle">0.659</text>
+    <text x="690" y="327" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#0F766E" text-anchor="middle">下降 44.7%</text>
+    <text x="92" y="383" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">控制力峰值 N</text>
+    <text x="410" y="383" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#4B5563" text-anchor="middle">345</text>
+    <text x="610" y="383" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#B91C1C" text-anchor="middle">767</text>
+    <text x="690" y="383" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#B91C1C" text-anchor="middle">主动用力增加</text>
+    <text x="92" y="439" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">控制能耗 J</text>
+    <text x="410" y="439" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#4B5563" text-anchor="middle">461</text>
+    <text x="610" y="439" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#B91C1C" text-anchor="middle">1585</text>
+    <text x="690" y="439" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#B91C1C" text-anchor="middle">能耗代价</text>
+    <text x="92" y="495" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">平均门控系数</text>
+    <text x="410" y="495" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#7A869A" text-anchor="middle">--</text>
+    <text x="610" y="495" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" font-weight="700" fill="#031D40" text-anchor="middle">0.353</text>
+    <text x="690" y="495" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#4B5563" text-anchor="middle">状态相关介入</text>
+  </g>
+  <g id="training-chain">
+    <path fill="#F3F6FA" stroke="#D9E2EF" stroke-width="1" d="M818,136 H1210 A6,6 0 0 1 1216,142 V524 A6,6 0 0 1 1210,530 H818 A6,6 0 0 1 812,524 V142 A6,6 0 0 1 818,136 Z" />
+    <text x="848" y="178" font-family="SimHei, Arial, sans-serif" font-size="24" fill="#031D40">训练行为链路</text>
+    <g id="stage-one">
+      <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M854,214 H1142 A6,6 0 0 1 1148,220 V262 A6,6 0 0 1 1142,268 H854 A6,6 0 0 1 848,262 V220 A6,6 0 0 1 854,214 Z" />
+      
+  <g transform="translate(868, 226) scale(1.25)" fill="none" stroke="#4472C4" stroke-width="2">
+    <path d="M4 6a8 3 0 1 0 16 0a8 3 0 1 0 -16 0" />
+    <path d="M4 6v6a8 3 0 0 0 16 0v-6" />
+    <path d="M4 12v6a8 3 0 0 0 16 0v-6" />
+  </g>
+      <text x="916" y="237" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#031D40">SPDF 轨迹示教</text>
+      <text x="916" y="259" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#4B5563">提供稳定先验和动作样本</text>
+    </g>
+    <path d="M998 276V304" stroke="#4472C4" stroke-width="2" />
+    <path d="M990 296L998 306L1006 296" fill="none" stroke="#4472C4" stroke-width="2" />
+    <g id="stage-two">
+      <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M854,316 H1142 A6,6 0 0 1 1148,322 V364 A6,6 0 0 1 1142,370 H854 A6,6 0 0 1 848,364 V322 A6,6 0 0 1 854,316 Z" />
+      
+  <g transform="translate(868, 328) scale(1.25)" fill="none" stroke="#4472C4" stroke-width="2">
+    <path d="M15.5 13a3.5 3.5 0 0 0 -3.5 3.5v1a3.5 3.5 0 0 0 7 0v-1.8" />
+    <path d="M8.5 13a3.5 3.5 0 0 1 3.5 3.5v1a3.5 3.5 0 0 1 -7 0v-1.8" />
+    <path d="M17.5 16a3.5 3.5 0 0 0 0 -7h-.5" />
+    <path d="M19 9.3v-2.8a3.5 3.5 0 0 0 -7 0" />
+    <path d="M6.5 16a3.5 3.5 0 0 1 0 -7h.5" />
+    <path d="M5 9.3v-2.8a3.5 3.5 0 0 1 7 0v10" />
+  </g>
+      <text x="916" y="339" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#031D40">PPO 微调</text>
+      <text x="916" y="361" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#4B5563">回报由约 -941 收敛到 -578</text>
+    </g>
+    <path d="M998 378V406" stroke="#4472C4" stroke-width="2" />
+    <path d="M990 398L998 408L1006 398" fill="none" stroke="#4472C4" stroke-width="2" />
+    <g id="stage-three">
+      <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M854,418 H1142 A6,6 0 0 1 1148,424 V466 A6,6 0 0 1 1142,472 H854 A6,6 0 0 1 848,466 V424 A6,6 0 0 1 854,418 Z" />
+      
+  <g transform="translate(868, 430) scale(1.25)" fill="none" stroke="#4472C4" stroke-width="2">
+    <path d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06" />
+    <path d="M15 19l2 2l4 -4" />
+  </g>
+      <text x="916" y="441" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#031D40">安全门控部署</text>
+      <text x="916" y="463" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#4B5563">低激励保守，高激励允许主动控制</text>
+    </g>
+  </g>
+  <g id="summary-strip">
+    <path fill="#EAF2FF" stroke="#D9E2EF" stroke-width="1" d="M70,560 H1210 A6,6 0 0 1 1216,566 V616 A6,6 0 0 1 1210,622 H70 A6,6 0 0 1 64,616 V566 A6,6 0 0 1 70,560 Z" />
+    <text x="94" y="599" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#031D40">阶段判断：</text>
+    <text x="210" y="599" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="18" fill="#1D2430">SI-RPPO 已验证“更好回报 + 更强俯仰抑制”，下一步要继续压低能耗和动作峰值。</text>
+  </g>
+  <g id="footer">
+    <text x="56" y="682" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="12" fill="#7A869A">消融结果用于定位收益来源，也暴露能耗与动作幅值仍需进一步整定</text>
+  </g>
+</svg>

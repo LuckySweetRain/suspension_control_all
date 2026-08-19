@@ -1,0 +1,18 @@
+# MPC config with the same preview horizon used by SI-RPPO.
+inherits: default.yaml
+
+preview:
+  steps: 450
+  dt: 0.002
+
+mpc:
+  horizon: 30
+  max_iter: 50
+  replan_interval: 5
+  w_body: 0.45
+  w_pitch: 0.20
+  w_susp: 0.25
+  w_tire: 0.10
+  w_control: 0.05
+  control_weight: 0.05
+  delta_weight: 0.0

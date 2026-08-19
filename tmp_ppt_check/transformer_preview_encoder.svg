@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#263244"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#0f172a" flood-opacity="0.16"/>
+    </filter>
+    <style>
+      .title { font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif; font-size: 40px; font-weight: 700; fill: #111827; }
+      .sub { font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif; font-size: 20px; fill: #475569; }
+      .box-title { font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif; font-size: 24px; font-weight: 700; fill: #111827; }
+      .box-text { font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif; font-size: 18px; fill: #334155; }
+      .small { font-family: "Microsoft YaHei", "SimHei", Arial, sans-serif; font-size: 16px; fill: #64748b; }
+      .arrow { stroke: #263244; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .thin { stroke: #64748b; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="90" y="82" class="title">Transformer 道路预瞄编码器结构</text>
+  <text x="90" y="120" class="sub">当前代码配置：输入 450×2，embedding=64，Encoder=2 层，Multi-Head Attention=4 头，FFN=128，dropout=0</text>
+
+  <!-- Main pipeline boxes -->
+  <rect x="80" y="335" width="220" height="130" rx="18" fill="#e0f2fe" stroke="#0284c7" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="116" y="382" class="box-title">道路预瞄序列</text>
+  <text x="116" y="418" class="box-text">P<tspan baseline-shift="sub">t</tspan> ∈ R<tspan baseline-shift="super">450×2</tspan></text>
+  <text x="116" y="448" class="small">前/后轮未来路面 token</text>
+
+  <rect x="380" y="335" width="220" height="130" rx="18" fill="#dcfce7" stroke="#16a34a" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="425" y="382" class="box-title">线性投影</text>
+  <text x="425" y="418" class="box-text">Linear：2 → 64</text>
+  <text x="425" y="448" class="small">每个 token 映射为 64 维</text>
+
+  <rect x="680" y="335" width="240" height="130" rx="18" fill="#f0fdf4" stroke="#22c55e" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="720" y="382" class="box-title">位置编码</text>
+  <text x="720" y="418" class="box-text">Sinusoidal PE</text>
+  <text x="720" y="448" class="small">保留预瞄序列顺序信息</text>
+
+  <rect x="1000" y="225" width="300" height="350" rx="22" fill="#fff7ed" stroke="#f97316" stroke-width="3" filter="url(#shadow)"/>
+  <text x="1034" y="270" class="box-title">Transformer Encoder × 2</text>
+  <text x="1034" y="306" class="box-text">每层包含：</text>
+  <rect x="1034" y="330" width="232" height="54" rx="10" fill="#ffedd5" stroke="#fb923c" stroke-width="1.6"/>
+  <text x="1060" y="364" class="box-text">4 头自注意力</text>
+  <rect x="1034" y="405" width="232" height="54" rx="10" fill="#ffedd5" stroke="#fb923c" stroke-width="1.6"/>
+  <text x="1060" y="439" class="box-text">残差连接 + LayerNorm</text>
+  <rect x="1034" y="480" width="232" height="54" rx="10" fill="#ffedd5" stroke="#fb923c" stroke-width="1.6"/>
+  <text x="1060" y="514" class="box-text">FFN：64 → 128 → 64</text>
+
+  <rect x="1380" y="300" width="170" height="95" rx="16" fill="#fef3c7" stroke="#d97706" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="1412" y="336" class="box-title">均值池化</text>
+  <text x="1412" y="368" class="box-text">mean(dim=1)</text>
+
+  <rect x="1380" y="470" width="170" height="95" rx="16" fill="#fef9c3" stroke="#ca8a04" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="1412" y="506" class="box-title">预瞄特征</text>
+  <text x="1412" y="538" class="box-text">64 维向量</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M300 400 L380 400"/>
+  <path class="arrow" d="M600 400 L680 400"/>
+  <path class="arrow" d="M920 400 L1000 400"/>
+  <path class="arrow" d="M1300 350 L1380 350"/>
+  <path class="arrow" d="M1465 395 L1465 470"/>
+
+  <!-- Context below -->
+  <rect x="340" y="680" width="920" height="90" rx="16" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="380" y="718" class="box-title">后续使用方式</text>
+  <text x="380" y="752" class="box-text">预瞄特征 64 维 与 车辆状态 MLP 特征 128 维 拼接，形成 192 维融合特征，再送入 PPO 策略头和价值头。</text>
+
+  <text x="90" y="835" class="small">注：PPT 上写“Transformer 编码器 2层，4头注意力”是准确的，但建议补充“线性投影、位置编码、均值池化”三个环节，才是当前代码中的完整预瞄编码器。</text>
+</svg>

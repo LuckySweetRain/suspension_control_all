@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+    <rect x="0" y="0" width="1280" height="96" fill="#F3F6FA" />
+    <path d="M56 142H1224 M56 646H1224" stroke="#D9E2EF" stroke-width="1" />
+  </g>
+  <g id="header">
+    <text x="56" y="62" font-family="SimHei, Arial, sans-serif" font-size="34" fill="#031D40">本次汇报围绕“进展、结果、问题、计划”展开</text>
+    <text x="1224" y="62" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#7A869A" text-anchor="end">02 / 16</text>
+  </g>
+  <g id="agenda-main">
+    <line x1="155" y1="210" x2="155" y2="574" stroke="#D9E2EF" stroke-width="3" />
+    <circle cx="155" cy="210" r="11" fill="#031D40" />
+    <circle cx="155" cy="326" r="11" fill="#4472C4" />
+    <circle cx="155" cy="442" r="11" fill="#4472C4" />
+    <circle cx="155" cy="558" r="11" fill="#B91C1C" />
+    <g id="agenda-item-1">
+      <text x="205" y="218" font-family="SimHei, Arial, sans-serif" font-size="28" fill="#031D40">01 研究进展总览</text>
+      <text x="205" y="250" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="18" fill="#4B5563">建模、控制方法、仿真平台和强化学习实验的完成情况</text>
+    </g>
+    <g id="agenda-item-2">
+      <text x="205" y="334" font-family="SimHei, Arial, sans-serif" font-size="28" fill="#031D40">02 SPDF 方法与实验结果</text>
+      <text x="205" y="366" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="18" fill="#4B5563">周期滞后滑模控制、实用指定时间收敛和随机/凸包路面对比</text>
+    </g>
+    <g id="agenda-item-3">
+      <text x="205" y="450" font-family="SimHei, Arial, sans-serif" font-size="28" fill="#031D40">03 SI-RPPO 安全强化学习</text>
+      <text x="205" y="482" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="18" fill="#4B5563">道路预瞄编码、安全教师门控、动作约束和横向消融验证</text>
+    </g>
+    <g id="agenda-item-4">
+      <text x="205" y="566" font-family="SimHei, Arial, sans-serif" font-size="28" fill="#031D40">04 当前问题与后续计划</text>
+      <text x="205" y="598" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="18" fill="#4B5563">参数鲁棒性、能耗折中、非理想预瞄和硬件在环验证安排</text>
+    </g>
+  </g>
+  <g id="right-summary">
+    <path fill="#F3F6FA" stroke="#D9E2EF" stroke-width="1" d="M892,188 H1164 A6,6 0 0 1 1170,194 V536 A6,6 0 0 1 1164,542 H892 A6,6 0 0 1 886,536 V194 A6,6 0 0 1 892,188 Z" />
+    
+  <g transform="translate(918, 224) scale(1.58333)" fill="none" stroke="#4472C4" stroke-width="2">
+    <path d="M3 4l18 0" />
+    <path d="M4 4v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-10" />
+    <path d="M12 16l0 4" />
+    <path d="M9 20l6 0" />
+    <path d="M8 12l3 -3l2 2l3 -3" />
+  </g>
+    <text x="918" y="304" font-family="SimHei, Arial, sans-serif" font-size="24" fill="#031D40">答辩重点</text>
+    <text font-size="18" fill="#1D2430" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="918" y="350">不是复述全文，</text><text font-size="18" fill="#1D2430" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="918" y="380">而是回答：</text><text font-size="18" fill="#4472C4" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="918" y="422" font-weight="700">做到了什么？</text><text font-size="18" fill="#4472C4" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="918" y="456" font-weight="700">效果如何？</text><text font-size="18" fill="#B91C1C" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="918" y="490" font-weight="700">还差什么？</text><text font-size="18" fill="#031D40" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="918" y="524" font-weight="700">后面怎么做？</text></g>
+  <g id="footer">
+    <text x="56" y="680" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="12" fill="#7A869A">中期答辩结构</text>
+  </g>
+</svg>

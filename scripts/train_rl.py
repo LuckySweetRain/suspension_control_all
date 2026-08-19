@@ -27,7 +27,7 @@ from controllers.prior import (
     shield_policy_action,
     shield_residual_action,
 )
-from envs import HalfCarEnv, MuJoCoFullCarEnv, MuJoCoVehicleEnv
+from envs import HalfCarEnv
 from rl.ddpg import DDPGAgent, DDPGConfig
 from rl.ppo import PPOAgent, PPOConfig, finish_ppo_trajectory
 from rl.replay_buffer import MixedReplaySampler, ReplayBuffer
@@ -107,11 +107,6 @@ def set_seed(seed: int):
 
 
 def make_env(config: dict, scenario: dict, use_preview: bool = True):
-    engine = str(config.get("environment", {}).get("engine", "python")).lower()
-    if engine in {"mujoco_full", "mujoco_full_car", "full_car"}:
-        return MuJoCoFullCarEnv(config, scenario=scenario, use_preview=use_preview)
-    if engine in {"mujoco", "mujoco_vehicle"}:
-        return MuJoCoVehicleEnv(config, scenario=scenario, use_preview=use_preview)
     return HalfCarEnv(config, scenario=scenario, use_preview=use_preview)
 
 
@@ -120,7 +115,8 @@ def build_expert_controller(name: str, env: HalfCarEnv, config: dict):
     if name == "pid":
         return PIDController(env.params, env.control_dt, env.force_limit), False
     if name == "spdf":
-        return SPDFController(env.params, env.control_dt), False
+        controller = SPDFController(env.params, env.control_dt, config=config)
+        return controller, bool(getattr(controller, "uses_preview", False))
     if name == "mpc":
         if not hasattr(env, "model"):
             raise ValueError("MPC expert collection requires the Python HalfCarEnv model.")
@@ -133,14 +129,8 @@ def collect_expert_buffer(config: dict, rl_cfg, capacity: int) -> ReplayBuffer:
     expert_buffer = ReplayBuffer(rl_cfg.obs_dim, rl_cfg.act_dim, capacity)
     if not expert_cfg.get("enabled", False):
         return expert_buffer
-    if str(config.get("environment", {}).get("engine", "python")).lower() in {
-        "mujoco",
-        "mujoco_vehicle",
-        "mujoco_full",
-        "mujoco_full_car",
-        "full_car",
-    }:
-        print("Skipping expert collection for MuJoCo dynamics envs; set expert.enabled=false for pure MuJoCo RL runs.")
+    if str(config.get("environment", {}).get("engine", "python")).lower() != "python":
+        print("Skipping expert collection for non-python envs.")
         return expert_buffer
     controllers = list(expert_cfg.get("controllers", ["pid", "spdf", "mpc"]))
     episodes_per_scenario = int(expert_cfg.get("episodes_per_scenario", 1))

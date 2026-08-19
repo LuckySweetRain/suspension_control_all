@@ -1,5 +1,14 @@
-results/
+﻿results/
 datasets/
+logs/
+tmp_pytest*/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+*.bak
+*.bak_*
+*.log
+*.aux
+*.fls
+*.fdb_latexmk
+*.xdv

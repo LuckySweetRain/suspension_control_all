@@ -154,8 +154,8 @@ def collect_env_statistics(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/mujoco_full_car_corner.yaml")
-    parser.add_argument("--out", default="results/mujoco_env_statistics.json")
+    parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument("--out", default="results/env_statistics.json")
     parser.add_argument("--episodes", type=int, default=8)
     parser.add_argument("--max-steps", type=int, default=200)
     parser.add_argument("--action-mode", choices=["passive", "random"], default="random")

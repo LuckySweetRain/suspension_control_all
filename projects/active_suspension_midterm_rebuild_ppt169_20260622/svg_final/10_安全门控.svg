@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#4472C4" />
+    </marker>
+  </defs>
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+    <path d="M56 112H1224 M56 650H1224" stroke="#D9E2EF" stroke-width="1" />
+  </g>
+  <g id="header">
+    <text x="56" y="72" font-family="SimHei, Arial, sans-serif" font-size="34" fill="#031D40">安全门控把“何时主动用力”变成状态相关决策</text>
+    <text x="1224" y="72" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#7A869A" text-anchor="end">10 / 16</text>
+  </g>
+  <g id="gate-equation">
+    <path fill="#F3F6FA" stroke="#D9E2EF" stroke-width="1" d="M104,166 H1176 A6,6 0 0 1 1182,172 V272 A6,6 0 0 1 1176,278 H104 A6,6 0 0 1 98,272 V172 A6,6 0 0 1 104,166 Z" />
+    <text x="134" y="212" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="28" fill="#031D40">u_t = Π_U( g_t a_t + (1 − g_t) u_safe )</text>
+    <text x="134" y="250" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="17" fill="#4B5563">门控系数 g_t 控制主动策略与安全教师之间的混合比例，Π_U 对执行动作做可行性投影。</text>
+  </g>
+  <g id="state-low">
+    <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M98,338 H416 A6,6 0 0 1 422,344 V530 A6,6 0 0 1 416,536 H98 A6,6 0 0 1 92,530 V344 A6,6 0 0 1 98,338 Z" />
+    
+  <g transform="translate(122, 370) scale(1.58333)" fill="none" stroke="#4472C4" stroke-width="2">
+    <path d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06" />
+    <path d="M15 19l2 2l4 -4" />
+  </g>
+    <text x="176" y="392" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">低激励路况</text>
+    <text x="122" y="448" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="26" font-weight="700" fill="#4472C4">g_t → 0</text>
+    <text font-size="16" fill="#4B5563" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="122" y="486">控制器接近被动安全教师，</text><text font-size="16" fill="#4B5563" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="122" y="511">避免无意义主动用力。</text></g>
+  <line x1="422" y1="438" x2="476" y2="438" stroke="#4472C4" stroke-width="3" marker-end="url(#arrowBlue)" />
+  <g id="state-open">
+    <path fill="#EAF2FF" stroke="#D9E2EF" stroke-width="1" d="M492,338 H810 A6,6 0 0 1 816,344 V530 A6,6 0 0 1 810,536 H492 A6,6 0 0 1 486,530 V344 A6,6 0 0 1 492,338 Z" />
+    
+  <g transform="translate(516, 370) scale(1.58333)" fill="none" stroke="#4472C4" stroke-width="2">
+    <path d="M3 12h4l3 8l4 -16l3 8h4" />
+  </g>
+    <text x="570" y="392" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">高激励且安全裕度充足</text>
+    <text x="516" y="448" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="26" font-weight="700" fill="#4472C4">g_t ↑</text>
+    <text font-size="16" fill="#4B5563" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="516" y="486">PPO 获得主动修正自由度，</text><text font-size="16" fill="#4B5563" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="516" y="511">利用预瞄信息提前抑振。</text></g>
+  <line x1="816" y1="438" x2="870" y2="438" stroke="#4472C4" stroke-width="3" marker-end="url(#arrowBlue)" />
+  <g id="state-boundary">
+    <path fill="#FFF1F2" stroke="#D9E2EF" stroke-width="1" d="M886,338 H1204 A6,6 0 0 1 1210,344 V530 A6,6 0 0 1 1204,536 H886 A6,6 0 0 1 880,530 V344 A6,6 0 0 1 886,338 Z" />
+    
+  <g transform="translate(910, 370) scale(1.58333)" fill="none" stroke="#B91C1C" stroke-width="2">
+    <path d="M3 21h4l13 -13a1.5 1.5 0 0 0 -4 -4l-13 13v4" />
+    <path d="M14.5 5.5l4 4" />
+    <path d="M12 8l-5 -5l-4 4l5 5" />
+    <path d="M7 8l-1.5 1.5" />
+    <path d="M16 12l5 5l-4 4l-5 -5" />
+    <path d="M16 17l-1.5 1.5" />
+  </g>
+    <text x="964" y="392" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">接近安全边界</text>
+    <text x="910" y="448" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="26" font-weight="700" fill="#B91C1C">Π_U 修正</text>
+    <text font-size="16" fill="#4B5563" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="910" y="486">限制幅值、变化率和安全裕度，</text><text font-size="16" fill="#4B5563" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="910" y="511">修正量反馈进 PPO 损失。</text></g>
+  <g id="takeaway">
+    <text x="92" y="604" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#031D40">核心含义：</text>
+    <text x="198" y="604" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="18" fill="#1D2430">SI-RPPO 不是无限制增大控制力，而是在状态相关门控下主动用力。</text>
+  </g>
+  <g id="footer">
+    <text x="56" y="682" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="12" fill="#7A869A">安全教师为部署阶段被动零主动力；SPDF 用于训练阶段示教初始化</text>
+  </g>
+</svg>

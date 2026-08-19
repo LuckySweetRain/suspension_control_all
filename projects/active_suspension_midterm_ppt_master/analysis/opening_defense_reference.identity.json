@@ -1,0 +1,95 @@
+{
+  "source": "E:\\Desktop\\workspace\\suspension_control_all\\projects\\active_suspension_midterm_ppt_master\\sources\\opening_defense_reference.pptx",
+  "slide_count": 20,
+  "canvas": {
+    "width_px": 960,
+    "height_px": 540,
+    "aspect": 1.7778
+  },
+  "theme": {
+    "palette": {
+      "background": "#FFFFFF",
+      "background_alt": "#E7E6E6",
+      "text": "#000000",
+      "text_alt": "#44546A",
+      "hyperlink": "#0563C1",
+      "accent1": "#4472C4",
+      "accent2": "#ED7D31",
+      "accent3": "#A5A5A5",
+      "accent4": "#FFC000",
+      "accent5": "#5B9BD5",
+      "accent6": "#70AD47",
+      "primary": "#4472C4"
+    },
+    "fonts": {
+      "title": {
+        "latin": "Calibri Light"
+      },
+      "body": {
+        "latin": "Calibri"
+      }
+    }
+  },
+  "observed": {
+    "fonts": {
+      "latin": [
+        {
+          "value": "微软雅黑",
+          "count": 497
+        },
+        {
+          "value": "黑体",
+          "count": 71
+        },
+        {
+          "value": "Inter",
+          "count": 18
+        }
+      ],
+      "ea": [
+        {
+          "value": "微软雅黑",
+          "count": 515
+        },
+        {
+          "value": "黑体",
+          "count": 71
+        }
+      ]
+    },
+    "colors": [
+      {
+        "value": "#000000",
+        "count": 85
+      },
+      {
+        "value": "#414455",
+        "count": 19
+      },
+      {
+        "value": "#FF0000",
+        "count": 12
+      },
+      {
+        "value": "#031D40",
+        "count": 2
+      },
+      {
+        "value": "#70AD47",
+        "count": 2
+      },
+      {
+        "value": "#A6A6A6",
+        "count": 1
+      },
+      {
+        "value": "#ACACAC",
+        "count": 1
+      },
+      {
+        "value": "#FFFFFF",
+        "count": 1
+      }
+    ]
+  }
+}

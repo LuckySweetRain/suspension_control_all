@@ -37,7 +37,7 @@ The default full-car safe PPO config currently resolves to approximately:
 | Force limit | `5000 N` per controlled channel | plausible but aggressive |
 | Actuator time constant | `0.02 s` | plausible fast active actuator |
 | Actuator rate limit | `200000 N/s` | allows `2000 N` change per 10 ms control step |
-| Max suspension travel | `0.25 m` | too loose for passenger-car safety evaluation |
+| Max suspension travel | `0.08 m` | current half-car safety boundary used by the report and default configs |
 | Max pitch/roll | `0.45 rad` | too loose; about 25.8 degrees |
 | Max wheel displacement | `1.0 m` | not physically meaningful as a safety limit |
 

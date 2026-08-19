@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+    <path d="M56 112H1224 M56 650H1224" stroke="#D9E2EF" stroke-width="1" />
+  </g>
+  <g id="header">
+    <text x="56" y="72" font-family="SimHei, Arial, sans-serif" font-size="34" fill="#031D40">横向结果显示：SPDF 最强减振，SI-RPPO 综合回报最优</text>
+    <text x="1224" y="72" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#7A869A" text-anchor="end">12 / 16</text>
+  </g>
+  <g id="comparison-table">
+    <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M70,136 H1210 A6,6 0 0 1 1216,142 V422 A6,6 0 0 1 1210,428 H70 A6,6 0 0 1 64,422 V142 A6,6 0 0 1 70,136 Z" />
+    <path fill="#031D40" d="M70,136 H1210 A6,6 0 0 1 1216,142 V176 A6,6 0 0 1 1210,182 H70 A6,6 0 0 1 64,176 V142 A6,6 0 0 1 70,136 Z" />
+    <text x="88" y="165" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF">指标</text>
+    <text x="306" y="165" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">被动</text>
+    <text x="430" y="165" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">PID</text>
+    <text x="555" y="165" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">SPDF</text>
+    <text x="680" y="165" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">MPC</text>
+    <text x="830" y="165" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">PPO scratch</text>
+    <text x="1038" y="165" font-family="SimHei, Arial, sans-serif" font-size="17" fill="#FFFFFF" text-anchor="middle">SI-RPPO</text>
+    <path d="M274 136V428 M368 136V428 M492 136V428 M618 136V428 M742 136V428 M918 136V428" stroke="#D9E2EF" stroke-width="1" />
+    <path d="M64 182H1216 M64 244H1216 M64 306H1216 M64 368H1216" stroke="#E8EEF7" stroke-width="1" />
+    <text x="88" y="219" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">平均回报（越高越好）</text>
+    <text x="306" y="219" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">-869</text>
+    <text x="430" y="219" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">-6698</text>
+    <text x="555" y="219" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">-9104</text>
+    <text x="680" y="219" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">-9536</text>
+    <text x="830" y="219" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">-762</text>
+    <path fill="#EAF2FF" d="M964,194 H1112 A4,4 0 0 1 1116,198 V222 A4,4 0 0 1 1112,226 H964 A4,4 0 0 1 960,222 V198 A4,4 0 0 1 964,194 Z" />
+    <text x="1038" y="219" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" font-weight="700" fill="#031D40" text-anchor="middle">-578</text>
+    <text x="88" y="281" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">车身加速度 RMS</text>
+    <text x="306" y="281" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">0.330</text>
+    <text x="430" y="281" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">0.252</text>
+    <path fill="#FFF1F2" d="M516,256 H594 A4,4 0 0 1 598,260 V284 A4,4 0 0 1 594,288 H516 A4,4 0 0 1 512,284 V260 A4,4 0 0 1 516,256 Z" />
+    <text x="555" y="281" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" font-weight="700" fill="#B91C1C" text-anchor="middle">0.013</text>
+    <text x="680" y="281" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">0.327</text>
+    <text x="830" y="281" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">0.274</text>
+    <text x="1038" y="281" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#031D40" text-anchor="middle">0.203</text>
+    <text x="88" y="343" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">俯仰加速度 RMS</text>
+    <text x="306" y="343" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">1.276</text>
+    <text x="430" y="343" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">0.778</text>
+    <path fill="#FFF1F2" d="M516,318 H594 A4,4 0 0 1 598,322 V346 A4,4 0 0 1 594,350 H516 A4,4 0 0 1 512,346 V322 A4,4 0 0 1 516,318 Z" />
+    <text x="555" y="343" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" font-weight="700" fill="#B91C1C" text-anchor="middle">0.047</text>
+    <text x="680" y="343" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">1.307</text>
+    <text x="830" y="343" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">1.192</text>
+    <text x="1038" y="343" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#031D40" text-anchor="middle">0.659</text>
+    <text x="88" y="405" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">控制能耗 J</text>
+    <text x="306" y="405" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">0</text>
+    <text x="430" y="405" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">1169</text>
+    <text x="555" y="405" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">3372</text>
+    <text x="680" y="405" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">5560</text>
+    <text x="830" y="405" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#4B5563" text-anchor="middle">461</text>
+    <text x="1038" y="405" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="17" fill="#031D40" text-anchor="middle">1585</text>
+  </g>
+  <g id="takeaways">
+    <path fill="#FFF1F2" stroke="#D9E2EF" stroke-width="1" d="M70,462 H402 A6,6 0 0 1 408,468 V584 A6,6 0 0 1 402,590 H70 A6,6 0 0 1 64,584 V468 A6,6 0 0 1 70,462 Z" />
+    <text x="96" y="504" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#B91C1C">SPDF</text>
+    <text x="96" y="534" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">减振指标最强，适合作为理论基准</text>
+    <text x="96" y="562" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#4B5563">代价是执行器能耗和约束整定压力较高</text>
+    <path fill="#EAF2FF" stroke="#D9E2EF" stroke-width="1" d="M474,462 H806 A6,6 0 0 1 812,468 V584 A6,6 0 0 1 806,590 H474 A6,6 0 0 1 468,584 V468 A6,6 0 0 1 474,462 Z" />
+    <text x="500" y="504" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">SI-RPPO</text>
+    <text x="500" y="534" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">相对 PPO 回报提升，俯仰抑制明显增强</text>
+    <text x="500" y="562" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#4B5563">体现示教初始化与安全门控的综合作用</text>
+    <path fill="#F3F6FA" stroke="#D9E2EF" stroke-width="1" d="M878,462 H1210 A6,6 0 0 1 1216,468 V584 A6,6 0 0 1 1210,590 H878 A6,6 0 0 1 872,584 V468 A6,6 0 0 1 878,462 Z" />
+    <text x="904" y="504" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">MPC / PID</text>
+    <text x="904" y="534" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#1D2430">结构清晰但对权重和模型精度敏感</text>
+    <text x="904" y="562" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#4B5563">后续用于预瞄基线和专家数据补充</text>
+  </g>
+  <g id="footer">
+    <text x="56" y="682" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="12" fill="#7A869A">评价覆盖六类控制器，综合比较舒适性、姿态、执行器能耗与安全约束</text>
+  </g>
+</svg>

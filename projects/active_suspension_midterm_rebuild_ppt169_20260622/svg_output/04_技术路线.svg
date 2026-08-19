@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#4472C4"/>
+    </marker>
+  </defs>
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>
+    <path d="M56 112H1224 M56 650H1224" stroke="#D9E2EF" stroke-width="1"/>
+  </g>
+  <g id="header">
+    <text x="56" y="72" font-family="SimHei, Arial, sans-serif" font-size="34" fill="#031D40">课题矛盾从“被动折中”推进到“两条互补控制主线”</text>
+    <text x="1224" y="72" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="13" fill="#7A869A" text-anchor="end">04 / 16</text>
+  </g>
+  <g id="flow-line">
+    <line x1="118" y1="360" x2="814" y2="360" stroke="#4472C4" stroke-width="3" marker-end="url(#arrowBlue)"/>
+  </g>
+  <g id="step-problem">
+    <rect x="70" y="244" width="178" height="232" rx="6" fill="#FFF1F2" stroke="#D9E2EF" stroke-width="1"/>
+    <use data-icon="tabler-outline/target" x="98" y="278" width="34" height="34" fill="#B91C1C" stroke-width="2"/>
+    <text x="98" y="342" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">核心矛盾</text>
+    <text x="98" y="382" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="16" fill="#1D2430">
+      <tspan x="98" dy="0">舒适性、安全性、</tspan>
+      <tspan x="98" dy="26">行程和能耗之间</tspan>
+      <tspan x="98" dy="26">存在多目标折中</tspan>
+    </text>
+  </g>
+  <g id="step-spdf">
+    <rect x="288" y="244" width="178" height="232" rx="6" fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1"/>
+    <use data-icon="tabler-outline/activity" x="316" y="278" width="34" height="34" fill="#4472C4" stroke-width="2"/>
+    <text x="316" y="342" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">SPDF</text>
+    <text x="316" y="382" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="16" fill="#1D2430">
+      <tspan x="316" dy="0">模型控制主线</tspan>
+      <tspan x="316" dy="26">可证明收敛</tspan>
+      <tspan x="316" dy="26">强减振基准</tspan>
+    </text>
+  </g>
+  <g id="step-rl">
+    <rect x="506" y="244" width="178" height="232" rx="6" fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1"/>
+    <use data-icon="tabler-outline/brain" x="534" y="278" width="34" height="34" fill="#4472C4" stroke-width="2"/>
+    <text x="534" y="342" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">SI-RPPO</text>
+    <text x="534" y="382" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="16" fill="#1D2430">
+      <tspan x="534" dy="0">预瞄编码</tspan>
+      <tspan x="534" dy="26">安全教师门控</tspan>
+      <tspan x="534" dy="26">可行动作修正</tspan>
+    </text>
+  </g>
+  <g id="step-verify">
+    <rect x="724" y="244" width="178" height="232" rx="6" fill="#F3F6FA" stroke="#D9E2EF" stroke-width="1"/>
+    <use data-icon="tabler-outline/chart-line" x="752" y="278" width="34" height="34" fill="#0F766E" stroke-width="2"/>
+    <text x="752" y="342" font-family="SimHei, Arial, sans-serif" font-size="22" fill="#031D40">横向验证</text>
+    <text x="752" y="382" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="16" fill="#1D2430">
+      <tspan x="752" dy="0">6 种方法</tspan>
+      <tspan x="752" dy="26">7 类路况</tspan>
+      <tspan x="752" dy="26">多指标比较</tspan>
+    </text>
+  </g>
+  <g id="framework-image">
+    <rect x="946" y="156" width="248" height="430" rx="6" fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1"/>
+    <image href="../images/research_framework_flow.png" x="982" y="178" width="176" height="336" preserveAspectRatio="xMidYMid meet"/>
+    <text x="1070" y="548" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="14" fill="#4B5563" text-anchor="middle">
+      <tspan x="1070" dy="0">研究框架图</tspan>
+      <tspan x="1070" dy="22">作为双主线的结构参照</tspan>
+    </text>
+  </g>
+  <g id="takeaway">
+    <rect x="70" y="576" width="832" height="42" rx="6" fill="#EAF2FF"/>
+    <text x="92" y="603" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="18" fill="#031D40">结论：SPDF 提供稳定强先验，SI-RPPO 负责把道路预瞄和安全约束纳入学习型控制。</text>
+  </g>
+  <g id="footer">
+    <text x="56" y="682" font-family='"Microsoft YaHei", Calibri, Arial, sans-serif' font-size="12" fill="#7A869A">来源：中期报告“研究背景与研究意义”及研究框架图</text>
+  </g>
+</svg>

@@ -15,12 +15,12 @@ class PIDController(Controller):
         self.fmax = fmax
         # Match active_suspension_sim.slx:
         # error = -state, then Kp=50000, Ki=5000, Kd=500000 for both channels.
-        self.kp_z = 50000.0
-        self.ki_z = 5000.0
-        self.kd_z = 500000.0
-        self.kp_theta = 50000.0
-        self.ki_theta = 5000.0
-        self.kd_theta = 500000.0
+        self.kp_z = 10000.0
+        self.ki_z = 1000.0
+        self.kd_z = 20000.0
+        self.kp_theta = 10000.0
+        self.ki_theta = 1000.0
+        self.kd_theta = 20000.0
         self.reset()
 
     def reset(self):

@@ -1,5 +1,0 @@
-PWD E:/Desktop/workspace/suspension_control_all
-INPUT e:/texlive/2024/texmf.cnf
-INPUT e:/texlive/2024/texmf-dist/web2c/texmf.cnf
-INPUT e:/texlive/2024/texmf-var/web2c/xetex/xelatex.fmt
-INPUT docs/thesis_standalone_preview.tex

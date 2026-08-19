@@ -1,0 +1,22 @@
+{
+  "schema": "template_fill_page_selection_rationale.v1",
+  "deck_goal": "基于中期报告内容，复用开题答辩PPT的原生版式与视觉风格，重组为中期答辩故事线。",
+  "slides": [
+    {"target_slide": 1, "source_slide": 1, "layout_reason": "封面页，保留学校/课题信息层级"},
+    {"target_slide": 2, "source_slide": 8, "layout_reason": "大标题加正文块，适合汇报主线和目录"},
+    {"target_slide": 3, "source_slide": 18, "layout_reason": "进度表结构，适合中期完成情况总览"},
+    {"target_slide": 4, "source_slide": 12, "layout_reason": "模型/公式解释页，适合半车模型与评价指标"},
+    {"target_slide": 5, "source_slide": 11, "layout_reason": "双控制器对照结构，适合SPDF与SI-RPPO两条主线"},
+    {"target_slide": 6, "source_slide": 13, "layout_reason": "公式推导与流程型内容，适合SPDF核心设计"},
+    {"target_slide": 7, "source_slide": 15, "layout_reason": "实验结果图页，适合SPDF阶段实验结论"},
+    {"target_slide": 8, "source_slide": 17, "layout_reason": "算法框架页，适合SI-RPPO策略网络与安全执行链路"},
+    {"target_slide": 9, "source_slide": 5, "layout_reason": "问题-方案对比页，适合从PPO scratch过渡到SI-RPPO"},
+    {"target_slide": 10, "source_slide": 7, "layout_reason": "方法综述与表格页，适合统一仿真框架和基线"},
+    {"target_slide": 11, "source_slide": 18, "layout_reason": "大表格页，适合全指标均值对比"},
+    {"target_slide": 12, "source_slide": 6, "layout_reason": "双表格页，适合SI-RPPO消融对比"},
+    {"target_slide": 13, "source_slide": 19, "layout_reason": "目标/结论页，适合阶段性结论凝练"},
+    {"target_slide": 14, "source_slide": 5, "layout_reason": "左右对比页，适合问题与改进方向"},
+    {"target_slide": 15, "source_slide": 18, "layout_reason": "进度表结构，适合后续研究计划"},
+    {"target_slide": 16, "source_slide": 20, "layout_reason": "结尾页，保留原答辩礼貌收束风格"}
+  ]
+}

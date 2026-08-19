@@ -33,6 +33,7 @@ class HalfCarParams:
     br2: float = 2000.0
     a: float = 1.2
     b: float = 1.5
+    g: float = 9.81
     delta_ab: float = 0.15
     fmax: float = 5000.0
     mb_real: float = 1200.0
@@ -45,6 +46,12 @@ class HalfCarParams:
     bc_real: float = 1200.0
     a_real: float = 1.2
     b_real: float = 1.5
+
+    def static_tire_loads(self) -> tuple[float, float]:
+        wheelbase = max(self.a + self.b, 1e-9)
+        front = (self.b / wheelbase * self.mb + self.mwf) * self.g
+        rear = (self.a / wheelbase * self.mb + self.mwr) * self.g
+        return float(front), float(rear)
 
     @classmethod
     def from_seed(cls, seed: int = 42) -> "HalfCarParams":
@@ -149,6 +156,8 @@ class HalfCarModel:
             "delta_dyr": float(delta_dyr),
             "Fpf": float(ftf + fbf),
             "Fpr": float(ftr + fbr),
+            "Uaf": float(uaf),
+            "Uar": float(uar),
             "ddzb": float(ddzb),
             "ddtheta": float(ddtheta),
             "ddzwf": float(ddzwf),

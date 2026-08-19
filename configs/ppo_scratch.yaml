@@ -1,0 +1,24 @@
+# PPO scratch 基线（关闭所有 SI-RPPO 组件）
+inherits: half_car_safe_ppo.yaml
+
+imitation:
+  enabled: false
+
+policy_action_parameterization:
+  enabled: false
+
+policy_improvement_gate:
+  enabled: false
+
+policy_safety:
+  enabled: false
+
+action_in_observation: false
+
+rl:
+  obs_dim_base: 14                    # 纯 14 维基础观测，不含执行力
+  ppo:
+    projection_penalty_weight: 0.0
+    unsafe_penalty_weight: 0.0
+    action_delta_penalty_weight: 0.0
+    adaptive_constraint_weights: false

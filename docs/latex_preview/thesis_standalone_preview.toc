@@ -1,9 +1,0 @@
-\contentsline {chapter}{\numberline {第一章\hspace {.3em}}基于路面预瞄的主动悬架控制方法与实验}{1}{chapter.1}%
-\contentsline {section}{\numberline {1.1}研究路线定位}{1}{section.1.1}%
-\contentsline {section}{\numberline {1.2}控制问题与路面预瞄表示}{1}{section.1.2}%
-\contentsline {section}{\numberline {1.3}SPDF 基线}{1}{section.1.3}%
-\contentsline {section}{\numberline {1.4}BP-NMPS：强化学习辅助的 MPC 参数调度}{2}{section.1.4}%
-\contentsline {section}{\numberline {1.5}SI-RPPO：安全教师门控的策略网络设计}{2}{section.1.5}%
-\contentsline {section}{\numberline {1.6}实验章节组织建议}{3}{section.1.6}%
-\contentsline {section}{\numberline {1.7}结论边界}{4}{section.1.7}%
-\contentsline {chapter}{\numberline {附录 A\hspace {.3em}}实验表格片段}{5}{appendix.A}%

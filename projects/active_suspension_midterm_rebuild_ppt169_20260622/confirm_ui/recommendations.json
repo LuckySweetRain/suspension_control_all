@@ -1,0 +1,162 @@
+{
+  "lang": "zh",
+  "recommend": {
+    "canvas": "ppt169",
+    "mode": "pyramid",
+    "visual_style": "swiss-minimal",
+    "icons": "tabler-outline",
+    "image_usage": "provided",
+    "formula_policy": "text-only",
+    "generation_mode": "continuous"
+  },
+  "page_count": {
+    "value": "16"
+  },
+  "audience": {
+    "value": "研究生中期答辩评审教师；场景为学术中期答辩，目标是清晰呈现已完成进展、实验结果、当前问题和后续计划。"
+  },
+  "content_divergence": {
+    "value": ""
+  },
+  "color": {
+    "selected": 0,
+    "candidates": [
+      {
+        "name_zh": "开题参考蓝白",
+        "name_en": "Reference Blue & White",
+        "note_zh": "沿用开题答辩的白底、深蓝标题和少量红色强调，正式稳妥。",
+        "note_en": "White field, deep-blue titles, and restrained red accents echo the opening defense deck.",
+        "palette": {
+          "background": "#FFFFFF",
+          "secondary_bg": "#F3F6FA",
+          "primary": "#031D40",
+          "accent": "#B91C1C",
+          "secondary_accent": "#4472C4",
+          "body_text": "#1D2430"
+        }
+      },
+      {
+        "name_zh": "工程蓝图深色",
+        "name_en": "Engineering Blueprint",
+        "note_zh": "深蓝背景配青蓝线框，更像控制系统蓝图，视觉冲击更强。",
+        "note_en": "Dark-blue field with cyan linework, closer to an engineering schematic.",
+        "palette": {
+          "background": "#071A2F",
+          "secondary_bg": "#0E2B47",
+          "primary": "#8FD3FF",
+          "accent": "#F97316",
+          "secondary_accent": "#38BDF8",
+          "body_text": "#EAF2FF"
+        }
+      },
+      {
+        "name_zh": "数据期刊石墨",
+        "name_en": "Data Journal Graphite",
+        "note_zh": "浅灰纸面、石墨正文和蓝绿数据强调，适合结果页和指标页。",
+        "note_en": "Paper-gray field, graphite text, and teal-blue data accents for result-heavy pages.",
+        "palette": {
+          "background": "#F7F8FA",
+          "secondary_bg": "#FFFFFF",
+          "primary": "#263238",
+          "accent": "#00796B",
+          "secondary_accent": "#1565C0",
+          "body_text": "#222831"
+        }
+      }
+    ]
+  },
+  "typography": {
+    "selected": 0,
+    "candidates": [
+      {
+        "name_zh": "开题参考无衬线",
+        "name_en": "Reference Sans",
+        "note_zh": "微软雅黑/黑体为主，贴近参考 PPT，适合中文答辩投影。",
+        "note_en": "Microsoft YaHei and SimHei echo the reference deck and remain safe in PowerPoint.",
+        "heading": {
+          "cjk": "SimHei",
+          "latin": "Arial",
+          "css": "SimHei, Arial, sans-serif",
+          "sample_cjk": "主动悬架中期答辩",
+          "sample_latin": "Active Suspension"
+        },
+        "body": {
+          "cjk": "Microsoft YaHei",
+          "latin": "Calibri",
+          "css": "\"Microsoft YaHei\", Calibri, Arial, sans-serif",
+          "sample_cjk": "道路预瞄信息与安全强化学习",
+          "sample_latin": "Road Preview Control"
+        },
+        "body_size": 20
+      },
+      {
+        "name_zh": "工程精密无衬线 + 等宽",
+        "name_en": "Engineering Sans + Mono",
+        "note_zh": "标题稳重，公式、变量和算法名用 Consolas，工程感更强。",
+        "note_en": "Stable sans titles with Consolas for variables and algorithm labels.",
+        "heading": {
+          "cjk": "Microsoft YaHei",
+          "latin": "Segoe UI",
+          "css": "\"Microsoft YaHei\", \"Segoe UI\", Arial, sans-serif",
+          "sample_cjk": "SI-RPPO 安全门控",
+          "sample_latin": "SI-RPPO Safety Gate"
+        },
+        "body": {
+          "cjk": "Microsoft YaHei",
+          "latin": "Arial",
+          "css": "\"Microsoft YaHei\", Arial, sans-serif",
+          "sample_cjk": "动作可行性约束反馈",
+          "sample_latin": "Action Feasibility Feedback"
+        },
+        "body_size": 19
+      },
+      {
+        "name_zh": "学术期刊衬线标题",
+        "name_en": "Academic Serif Headline",
+        "note_zh": "宋体/Georgia 标题配微软雅黑正文，更像论文结果汇报。",
+        "note_en": "Serif headline and sans body for an academic-publication feel.",
+        "heading": {
+          "cjk": "SimSun",
+          "latin": "Georgia",
+          "css": "Georgia, SimSun, serif",
+          "sample_cjk": "阶段成果与后续计划",
+          "sample_latin": "Midterm Results"
+        },
+        "body": {
+          "cjk": "Microsoft YaHei",
+          "latin": "Arial",
+          "css": "\"Microsoft YaHei\", Arial, sans-serif",
+          "sample_cjk": "统一仿真平台与横向对比",
+          "sample_latin": "Unified Simulation"
+        },
+        "body_size": 18
+      }
+    ]
+  },
+  "visual_style_spectrum": [
+    {
+      "id": "swiss-minimal",
+      "tag_zh": "稳妥克制",
+      "tag_en": "Restrained academic",
+      "note_zh": "像高质量高校课题组答辩：白底、网格、少装饰。",
+      "note_en": "Like a polished university research defense: white field, grid, sparse decoration."
+    },
+    {
+      "id": "blueprint",
+      "tag_zh": "工程蓝图",
+      "tag_en": "Engineering blueprint",
+      "note_zh": "像控制系统设计图：线框、标注、暗蓝底。",
+      "note_en": "Like a control-system drawing: linework, annotations, dark-blue field."
+    },
+    {
+      "id": "data-journalism",
+      "tag_zh": "数据期刊",
+      "tag_en": "Data-journal",
+      "note_zh": "像研究报告专题页：多图表、旁注、指标密度更高。",
+      "note_en": "Like a research feature spread: denser charts, side notes, source lines."
+    }
+  ],
+  "refine_spec": {
+    "value": false
+  }
+}

@@ -46,7 +46,8 @@ class TD3Config:
         act_dim = int(rl.get("act_dim", 2))
         history_cfg = dict(config.get("observation", {}).get("history", {}))
         history_steps = int(history_cfg.get("steps", 0)) if history_cfg.get("enabled", False) else 0
-        obs_dim_base = 14 + history_steps * (14 + 2 * act_dim)
+        action_obs_dim = act_dim if config.get("action_in_observation", False) else 0
+        obs_dim_base = 14 + action_obs_dim + history_steps * (14 + 2 * act_dim)
         return cls(
             obs_dim_base=int(rl.get("obs_dim_base", obs_dim_base)),
             preview_steps=int(config["preview"]["steps"]),

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <g id="background">
+    <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" />
+    <path d="M56 112H1224 M56 650H1224" stroke="#D9E2EF" stroke-width="1" />
+  </g>
+  <g id="header">
+    <text x="56" y="72" font-family="SimHei, Arial, sans-serif" font-size="34" fill="#031D40">统一半车模型把舒适性、安全性和执行器需求放到同一评价框架</text>
+    <text x="1224" y="72" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="13" fill="#7A869A" text-anchor="end">05 / 16</text>
+  </g>
+  <g id="model-panel">
+    <path fill="#F3F6FA" stroke="#D9E2EF" stroke-width="1" d="M76,154 H564 A6,6 0 0 1 570,160 V578 A6,6 0 0 1 564,584 H76 A6,6 0 0 1 70,578 V160 A6,6 0 0 1 76,154 Z" />
+    
+  <g transform="translate(100, 188) scale(1.83333)" fill="none" stroke="#4472C4" stroke-width="2">
+    <path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+    <path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+    <path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5" />
+  </g>
+    <text x="160" y="214" font-family="SimHei, Arial, sans-serif" font-size="24" fill="#031D40">非线性半车主动悬架模型</text>
+    <g id="vehicle-sketch">
+      <line x1="150" y1="332" x2="490" y2="294" stroke="#031D40" stroke-width="5" />
+      <circle cx="210" cy="410" r="34" fill="#FFFFFF" stroke="#031D40" stroke-width="3" />
+      <circle cx="438" cy="410" r="34" fill="#FFFFFF" stroke="#031D40" stroke-width="3" />
+      <path d="M210 376V332 M438 376V306" stroke="#4472C4" stroke-width="4" />
+      <path d="M210 376 l-18 18 M210 376 l18 18 M438 376 l-18 18 M438 376 l18 18" stroke="#4472C4" stroke-width="3" />
+      <text x="324" y="282" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="18" fill="#031D40" text-anchor="middle">z_b, θ_b</text>
+      <text x="210" y="466" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="16" fill="#4B5563" text-anchor="middle">u_af</text>
+      <text x="438" y="466" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="16" fill="#4B5563" text-anchor="middle">u_ar</text>
+    </g>
+    <text font-size="17" fill="#1D2430" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="104" y="532">输入：前后轮道路预瞄高程序列 + 车辆状态</text><text font-size="17" fill="#1D2430" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" x="104" y="562">输出：前后主动悬架力，受幅值和变化率约束</text></g>
+  <g id="metric-matrix">
+    <path fill="#FFFFFF" stroke="#D9E2EF" stroke-width="1" d="M626,154 H1204 A6,6 0 0 1 1210,160 V578 A6,6 0 0 1 1204,584 H626 A6,6 0 0 1 620,578 V160 A6,6 0 0 1 626,154 Z" />
+    <text x="654" y="206" font-family="SimHei, Arial, sans-serif" font-size="24" fill="#031D40">评价指标分为四组</text>
+    <g id="metric-row-1">
+      <path fill="#EAF2FF" d="M658,238 H894 A4,4 0 0 1 898,242 V316 A4,4 0 0 1 894,320 H658 A4,4 0 0 1 654,316 V242 A4,4 0 0 1 658,238 Z" />
+      <text x="680" y="270" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#031D40">乘坐舒适性</text>
+      <text x="680" y="300" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#4B5563">车身加速度 RMS、俯仰加速度 RMS</text>
+      <path fill="#F3F6FA" d="M934,238 H1170 A4,4 0 0 1 1174,242 V316 A4,4 0 0 1 1170,320 H934 A4,4 0 0 1 930,316 V242 A4,4 0 0 1 934,238 Z" />
+      <text x="956" y="270" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#031D40">姿态稳定性</text>
+      <text x="956" y="300" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#4B5563">最大俯仰角、车身位移响应</text>
+    </g>
+    <g id="metric-row-2">
+      <path fill="#F3F6FA" d="M658,348 H894 A4,4 0 0 1 898,352 V426 A4,4 0 0 1 894,430 H658 A4,4 0 0 1 654,426 V352 A4,4 0 0 1 658,348 Z" />
+      <text x="680" y="380" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#031D40">安全约束</text>
+      <text x="680" y="410" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#4B5563">悬架动行程、轮胎动载荷</text>
+      <path fill="#FFF1F2" d="M934,348 H1170 A4,4 0 0 1 1174,352 V426 A4,4 0 0 1 1170,430 H934 A4,4 0 0 1 930,426 V352 A4,4 0 0 1 934,348 Z" />
+      <text x="956" y="380" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#031D40">执行器需求</text>
+      <text x="956" y="410" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="16" fill="#4B5563">控制力峰值、能耗、动作变化率</text>
+    </g>
+    <g id="preview-interface">
+      <line x1="654" y1="474" x2="1174" y2="474" stroke="#D9E2EF" stroke-width="1" />
+      <text x="654" y="514" font-family="SimHei, Arial, sans-serif" font-size="20" fill="#031D40">道路预瞄接口</text>
+      <text x="654" y="548" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="17" fill="#1D2430">Transformer 编码未来前后轮路面高程序列，与车辆状态融合后输出控制动作。</text>
+    </g>
+  </g>
+  <g id="footer">
+    <text x="56" y="682" font-family="&quot;Microsoft YaHei&quot;, Calibri, Arial, sans-serif" font-size="12" fill="#7A869A">统一模型与指标是后续 SPDF、MPC、PPO 与 SI-RPPO 横向比较的基础</text>
+  </g>
+</svg>

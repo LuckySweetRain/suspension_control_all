@@ -31,15 +31,30 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         self.preview_steps = int(config["preview"]["steps"])
         self.preview_dt = float(config["preview"].get("dt", self.control_dt))
         self.road_scale = float(config.get("road_scale", 0.1))
-        safety_cfg = dict(config.get("safety_limits", {}))
-        self.safety_limits = {
-            "max_suspension_travel": float(safety_cfg.get("max_suspension_travel", 0.25)),
-            "max_pitch": float(safety_cfg.get("max_pitch", 0.45)),
-            "max_wheel_displacement": float(safety_cfg.get("max_wheel_displacement", 1.0)),
-        }
-        self.use_preview = use_preview
         self.params = HalfCarParams.from_config(config)
         self.model = HalfCarModel(self.params)
+        self.front_static_load, self.rear_static_load = self.params.static_tire_loads()
+        safety_cfg = dict(config.get("safety_limits", {}))
+        suspension_limit = float(safety_cfg.get("max_suspension_travel", 0.08))
+        self.safety_limits = {
+            "max_suspension_travel": suspension_limit,
+            "max_front_tire_dynamic_load": float(
+                safety_cfg.get("max_front_tire_dynamic_load", self.front_static_load)
+            ),
+            "max_rear_tire_dynamic_load": float(
+                safety_cfg.get("max_rear_tire_dynamic_load", self.rear_static_load)
+            ),
+        }
+        norm_cfg = dict(config.get("normalization", {}))
+        self.reward_scales = {
+            "body_acc": max(float(norm_cfg.get("body_acc", 0.491)), 1e-9),
+            "pitch_acc": max(float(norm_cfg.get("pitch_acc", 1.821)), 1e-9),
+            "suspension_travel": max(float(norm_cfg.get("suspension_travel", suspension_limit)), 1e-9),
+            "front_tire_load": max(float(norm_cfg.get("front_tire_load", self.front_static_load)), 1e-9),
+            "rear_tire_load": max(float(norm_cfg.get("rear_tire_load", self.rear_static_load)), 1e-9),
+            "control_force": max(float(norm_cfg.get("control_force", self.force_limit)), 1e-9),
+        }
+        self.use_preview = use_preview
         self.scenario = scenario or config["scenarios"][0]
         self.speed = float(self.scenario.get("speed", config.get("speed", 20.0)))
         self.road = RoadProfileFactory.create(self.scenario, self.episode_seconds, self.dt)
@@ -50,10 +65,23 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         self.last_derived = self.model.derived(self.state, np.zeros(4), self.last_action)
 
         self.base_obs_dim = 14
+        self.action_in_obs = bool(config.get("action_in_observation", False))
+        if self.action_in_obs:
+            self.base_obs_dim += 2  # 附加上一时刻执行器力 (uaf, uar)
         self.obs_dim = self.base_obs_dim + (self.preview_steps * 2 if use_preview else 0)
         if spaces is not None:
             self.action_space = spaces.Box(-self.force_limit, self.force_limit, shape=(2,), dtype=np.float32)
             self.observation_space = spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
+        else:
+            # Fallback when gymnasium is not available
+            class _Box:
+                def __init__(self, low, high, shape, dtype):
+                    self.low = np.full(shape, low, dtype=dtype)
+                    self.high = np.full(shape, high, dtype=dtype)
+                    self.shape = shape
+                    self.dtype = dtype
+            self.action_space = _Box(-self.force_limit, self.force_limit, (2,), np.float32)
+            self.observation_space = _Box(-np.inf, np.inf, (self.obs_dim,), np.float32)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         if seed is not None:
@@ -104,7 +132,7 @@ class HalfCarEnv(gym.Env if gym is not None else object):
 
     def _base_obs(self) -> np.ndarray:
         d = self.last_derived
-        return np.asarray(
+        base = np.asarray(
             [
                 self.state[0],
                 self.state[1],
@@ -123,6 +151,9 @@ class HalfCarEnv(gym.Env if gym is not None else object):
             ],
             dtype=np.float64,
         )
+        if self.action_in_obs:
+            return np.concatenate([base, self.last_action.astype(np.float64)])
+        return base
 
     def _obs(self) -> np.ndarray:
         base = self._base_obs()
@@ -131,26 +162,22 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         preview = self.road.preview(self.t, self.speed, self.wheelbase, self.preview_steps, self.preview_dt)
         return np.concatenate([base, preview.reshape(-1) / self.road_scale]).astype(np.float32)
 
-    # 半车 reward 归一化常数（2026-06-16 标定，passive 跨场景 mean 的倒数）
-    _RNORM = {
-        "body_acc": 4.1464e+00,
-        "pitch_acc": 3.0152e-01,
-        "suspension": 2.0116e+03,
-        "tire_load": 1.8743e-07,
-    }
-
     def _reward(self, action: np.ndarray) -> float:
         w = self.config["reward"]
         d = self.last_derived
-        rn = self._RNORM
-        susp = d["delta_yf"] ** 2 + d["delta_yr"] ** 2
-        tire = d["Fpf"] ** 2 + d["Fpr"] ** 2
-        control = float(np.sum(np.square(action / self.force_limit)))
+        s = self.reward_scales
+        body = (d["ddzb"] / s["body_acc"]) ** 2
+        pitch = (d["ddtheta"] / s["pitch_acc"]) ** 2
+        susp = (d["delta_yf"] / s["suspension_travel"]) ** 2 + (
+            d["delta_yr"] / s["suspension_travel"]
+        ) ** 2
+        tire = (d["Fpf"] / s["front_tire_load"]) ** 2 + (d["Fpr"] / s["rear_tire_load"]) ** 2
+        control = float(np.sum(np.square(action / s["control_force"])))
         raw = -float(
-            w["body_acc"] * rn["body_acc"] * d["ddzb"] ** 2
-            + w["pitch_acc"] * rn["pitch_acc"] * d["ddtheta"] ** 2
-            + w["suspension"] * rn["suspension"] * susp
-            + w["tire_load"] * rn["tire_load"] * tire
+            w["body_acc"] * body
+            + w["pitch_acc"] * pitch
+            + w["suspension"] * susp
+            + w["tire_load"] * tire
             + w["control"] * control
         )
         clip_cfg = w.get("clip", None)
@@ -164,12 +191,14 @@ class HalfCarEnv(gym.Env if gym is not None else object):
         max_susp = float(max(abs(d["delta_yf"]), abs(d["delta_yr"])))
         abs_pitch = float(abs(s[2]))
         max_wheel = float(max(abs(s[4]), abs(s[6])))
+        front_tire = float(abs(d["Fpf"]))
+        rear_tire = float(abs(d["Fpr"]))
         lim = self.safety_limits
         checks = {
             "finite": bool(finite),
             "suspension_travel": bool(max_susp <= lim["max_suspension_travel"]),
-            "pitch": bool(abs_pitch <= lim["max_pitch"]),
-            "wheel_displacement": bool(max_wheel <= lim["max_wheel_displacement"]),
+            "front_tire_dynamic_load": bool(front_tire <= lim["max_front_tire_dynamic_load"]),
+            "rear_tire_dynamic_load": bool(rear_tire <= lim["max_rear_tire_dynamic_load"]),
         }
         violations = [name for name, ok in checks.items() if not ok]
         return {
@@ -178,9 +207,14 @@ class HalfCarEnv(gym.Env if gym is not None else object):
             "violations": violations,
             "max_abs_suspension_travel": max_susp,
             "max_abs_wheel_displacement": max_wheel,
+            "max_abs_front_tire_dynamic_load": front_tire,
+            "max_abs_rear_tire_dynamic_load": rear_tire,
             "abs_pitch": abs_pitch,
             "limits": dict(lim),
         }
+
+    def close(self):
+        pass
 
     def _info(self, reward: float, unsafe: bool = False) -> dict[str, Any]:
         road = np.asarray(self.road.pair(self.t, self.speed, self.wheelbase), dtype=np.float64)
@@ -194,6 +228,7 @@ class HalfCarEnv(gym.Env if gym is not None else object):
             "action": self.last_action.copy(),
             "derived": dict(self.last_derived),
             "reward": float(reward),
+            "reward_scales": dict(self.reward_scales),
             "unsafe": bool(unsafe),
             "safety": dict(getattr(self, "last_safety", None) or self._safety()),
             "scenario": self.scenario.get("name", ""),

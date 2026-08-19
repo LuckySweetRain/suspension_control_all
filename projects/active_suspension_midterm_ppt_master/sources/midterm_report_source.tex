@@ -1,0 +1,1051 @@
+﻿% !Mode:: "TeX:UTF-8"
+
+\section{学术研究进度情况}
+
+本课题自开题以来，围绕“基于道路预瞄信息的主动悬架控制策略研究”这一主题，按照理论调研、模型建立、控制器实现、仿真验证和方法改进的路线持续推进。目前已完成半车主动悬架系统动力学建模、道路信息建模、
+经典控制器基线搭建、深度强化学习控制器设计以及阶段性对比实验等主要工作，整体研究进度与中期计划基本一致。
+
+在理论研究方面，已系统梳理主动悬架控制、道路预瞄建模、模型预测控制、安全强化学习和专家示教学习等方向的国内外研究现状，明确了现有方法在多目标约束、实时计算、安全探索和跨路况泛化方面的不足。
+在模型与仿真平台方面，已建立非线性半车主动悬架模型，构建包含车身垂向运动、俯仰运动、前后非簧载质量运动、悬架动行程、轮胎动载荷和执行器力约束的统一评价框架，并完成 ISO 随机路面和典型凸包路面等激励工况的生成与验证。
+
+在控制方法的设计方面，本课题已形成 SPDF 周期滞后滑模控制和 SI-RPPO 安全教师门控强化学习两条并列主线。第一条主线是基于滑模控制的周期滞后反馈控制方法（SPDF）。该方法面向半车主动悬架的垂向和俯仰运动，构造周期滞后滑模面和连续切换函数，使闭环误差能够实现实用指定时间收敛；相比 PID、天棚控制、反步法等方法，该方法可以显著提高悬架控制精度和收敛速度，相关成果已在 International Journal of Robust and Nonlinear Control（IJRNC，JCR Q1）发表。
+第二条主线是在道路预瞄信息可用的条件下，进一步发展基于安全教师门控与动作可行性约束反馈的在线 PPO 方法（SI-RPPO）。由于 SPDF 依赖车辆动力学模型和悬架参数，且未充分利用道路预瞄信息，难以完全发挥车载感知系统提前获取路面激励的优势，本课题设计了基于 Transformer 的强化学习控制器，将未来一段时间内的道路高程序列作为策略网络的重要输入，利用 Transformer 对时序预瞄信息的建模能力学习提前控制动作。考虑到强化学习直接输出主动悬架控制力时存在训练初期随机探索风险高、样本效率低和安全约束难以保证等问题，本课题进一步引入离线安全教师初始化、动作安全屏蔽、约束修正反馈和状态相关门控，使 PPO 在部署阶段不需要在线运行复杂专家控制器，也能在执行器可行域内输出平滑、可解释的主动控制力。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[height=0.78\textheight]{research_framework_flow.png}
+    \caption{基于道路预瞄信息的主动悬架控制研究框架}
+    \label{fig:research_framework_flow}
+\end{figure}
+
+阶段性实验表明，所提出方法在满足执行器力限幅和悬架安全约束的前提下，对舒适性指标具有进一步改善潜力。后续工作将重点围绕控制器参数整定、更多路况下的泛化验证、感知误差鲁棒性分析以及硬件在环验证、实车验证等方向展开实验。
+
+
+\section{研究背景与研究意义}
+
+悬架系统连接车身与车轮，其性能直接影响车辆乘坐舒适性、操纵稳定性和行驶安全性\cite{fekry2023vehicle,JXKF202502001}。传统被动悬架的刚度和阻尼参数固定，难以同时兼顾不同车速、载荷和路面等级下的多工况性能。
+半主动悬架能够调节阻尼但不能主动注入能量，主动悬架则可通过执行器施加控制力，在四象限内对车身和车轮运动进行协调控制，因而具有更高的性能上限\cite{balamurugan2012investigation,2013Active}。
+随着新能源汽车与智能汽车的发展，悬架系统逐渐从传统结构向可主动调节、可感知、可控制的新型系统演进。\cite{wang2025negstiffness,cheng2019savgs}。
+
+近年来，激光雷达、相机等车载感知系统的发展使道路预瞄信息可由上游感知模块提前获取\cite{qin2019novel,ni2020roadprofile}。与仅依赖车身响应的事后反馈控制相比，
+预瞄控制能够在车轮到达不平路面之前提前计算执行器动作，
+从而改善主动悬架对突变路面和随机路面激励的响应\cite{pang2019preview,wu2020preview,papadimitrakis2022preview}。
+现有研究表明，路面估计、模型预测控制和鲁棒控制均可提升悬架性能\cite{Tu2015adaptive,moradi2019offline,kim2023mpc}，但在强非线性、参数不确定、多目标优化和实时计算方面仍存在不足。
+
+深度强化学习为主动悬架控制提供了新的数据驱动路径。TD3、DDPG、SAC 和 PPO 等算法能够在连续动作空间中学习非线性控制策略\cite{lillicrap2015continuous,fujimoto2018addressing,haarnoja2018soft,schulman2017proximal}，
+并已在半主动与主动悬架舒适性控制中获得初步验证\cite{lee2023drl,wang2024deep,wang2024drlexp,han2022ppo}。
+同时，Transformer 结构具备对序列信息建模的能力\cite{vaswani2017attention}，适合用于编码未来若干时刻的道路预瞄序列。
+然而对于复杂多自由度、强非线性的主动悬架系统，直接采用随机初始化策略进行强化学习训练往往难以获得高质量控制策略。
+一方面，训练初期的随机控制动作通常缺乏物理可行性和时序合理性，可能引发执行器饱和、悬架动行程过大、轮胎动载荷异常等不安全行为。
+另一方面，主动悬架控制同时涉及车身舒适性、悬架行程、轮胎接地安全性和控制能耗等多项相互制约的性能指标，奖励函数对权重设置和状态尺度较为敏感，容易导致策略梯度信号噪声较大、收敛方向不稳定。
+此外，道路预瞄信息的有效利用依赖于未来路面激励与车辆动力学响应之间的时序匹配，而随机探索难以在训练早期形成合理的提前控制规律。
+因此，仅依靠无约束随机探索不仅容易陷入局部最优，也可能退化为保守控制策略，难以充分发挥强化学习在复杂工况下的性能潜力\cite{brunke2022safe,achiam2017constrained}。
+基于上述问题，如何在融合道路预瞄信息的同时，引入专家控制器对强化学习训练过程进行引导，并结合安全约束限制不合理控制行为，是实现主动悬架安全、高效、智能控制的关键。
+
+本课题围绕“数学模型 + 专家控制 + 预瞄强化学习”的技术路线展开，形成两条相互支撑的研究主线。
+第一条主线面向可解释、高精度和快速收敛的模型控制，基于非线性半车动力学模型提出基于滑模控制的周期滞后反馈控制方法 SPDF，用于实现车身垂向与俯仰误差的实用指定时间收敛，并提升悬架控制精度和收敛速度；
+第二条主线面向模型不确定性、道路预瞄利用和复杂工况泛化，构建 Transformer 强化学习控制框架，并进一步提出基于安全教师门控与动作可行性约束反馈的在线 PPO 方法 SI-RPPO。
+
+\section{国内外研究现状与问题分析}
+\subsection{主动悬架控制策略研究}
+汽车主动悬架系统的控制方法经过广泛深入的研究，并且伴随车辆技术的快速发展，各类新颖的控制策略不断涌现并得以应用。
+目前用于车辆主动悬架系统的控制策略主要可划分为经典控制方法、现代控制方法以及智能控制方法三大类。
+其中经典控制方法主要包括天棚控制、地棚控制、比例积分微分（PID）控制等。这类方法结构相对简单、实现方便，已被广泛应用于工程实践中。
+现代控制方法则主要涉及最优控制、模型预测控制（MPC）、鲁棒控制以及自适应控制等具有更强理论基础和更好鲁棒性的控制技术，
+在处理复杂非线性系统和多性能指标优化问题时具有良好表现。智能控制方法则主要涵盖模糊控制、神经网络控制、强化学习（RL）等方法，
+这些方法通过仿生智能或数据驱动方式应对复杂且高度非线性的车辆悬架控制问题，能在不确定及复杂条件下表现出较好的适应性与自主学习能力。
+
+
+不同的控制方法各具优缺点，因此近年来许多研究将不同类别的控制策略进行有效融合，以期实现优势互补、扬长避短。
+但无论采用单一策略还是多方法结合的方案，其核心目标始终围绕进一步提升车辆整体性能，在提高车辆行驶稳定性与安全性的同时，
+兼顾驾乘人员的乘坐舒适性，实现运动性能与驾乘体验之间的合理平衡。
+\subsubsection{经典控制方法}
+经典控制方法主要包括天棚控制、地棚控制、PID控制等，其中天棚控制理论通过使用负反馈控制器，生成一个与被控对象速度大小成比例、方向相反的控制力信号，
+能够实时有效地调整车身振动状态，对于抑制车辆低频振动具有显著效果\cite{karnopp1974vibration}。
+该方法的基本思想是利用一个假想阻尼器将车辆簧上质量平台与“天空”相连接，并在适当时机施加阻尼力，以有效抑制车身振动。
+该阻尼力由车辆配备的主动悬架系统实现。由于控制逻辑简明、实现难度低，该算法已在主动悬架控制领域得到广泛应用。文献\inlinecite{liu2019general}则首次提出了
+完整机械阻抗特性的天棚控制算法，解决传统天棚控制仅考虑阻尼的性能局限，并采用改进的自适应鱼群算法优化控制器参数，提升了参数的收敛效率。
+受天棚控制理论的启发，Valasek提出了地棚控制，其基本思想是通过一个假想的阻尼器将车辆的非簧载质量与地面相连，与天棚控制不同的是，地棚控制更注重提升车轮与路面的附着性能，
+从而增强车辆的操纵稳定性与行驶安全性\cite{valavsek1997extended}。
+
+PID控制器则由比例（P）、积分（I）以及微分（D）三部分组成，是目前工业实践中应用最为广泛的一种闭环反馈控制策略。
+PID控制的实现原理清晰且易于理解，在进行实际工程控制时，并不要求控制对象具有严格精确的数学模型。
+控制器的参数主要根据被控系统的反馈特性及工程经验进行调整与优化。
+近年来，PID控制器的参数整定方法也在不断发展与改进并已经在主动悬架控制中得到了广泛应用\cite{pidcontrollers,hanafi2010pid,YANG2011521}。
+随着现代控制理论与人工智能技术的快速发展，传统的PID方法逐渐在复杂场景中与其它智能控制策略相结合，形成智能复合型控制器。
+这种新型控制架构能够充分弥补单一PID控制的局限性，有效提高被控车辆系统的适应性与鲁棒性。
+例如，文献\inlinecite{wangipid}提出以PID方法作为深度神经网络训练过程中的学习率调度策略，以减少网络训练对于初始超参数的依赖性并提升模型训练精度。
+文献\inlinecite{rbf_pid_tuning_cn}则以深度神经网络为基础，通过网络学习实现PID控制器的最优参数自整定。
+基于智能优化算法的方法，如粒子群算法（PSO）\cite{pso_pid_tuning_cn}、遗传算法（GA）\cite{NRPJ202503013}等，也相继被引入到PID控制器参数优化过程中，
+有效地提高了控制器参数整定的效率与准确性。针对于具体车辆悬架模型控制器设计问题，当前文献已提出了一系列有效的复合控制方案。
+文献\inlinecite{wevj14090249}建立了八自由度全车主动悬架系统动力学模型，设计开发了一种模糊PID控制策略，实现了控制器参数的自适应调节与优化。
+文献\inlinecite{6071979}则针对四自由度半车主动悬架系统模型，设计了一种内环PID液压控制与外环PID车体行程控制相结合的双环PID控制框架，增强了整套主动悬架系统的抗干扰性能与稳定性。
+文献\inlinecite{siano2024ninth}进一步将遗传算法与模糊PID控制策略相融合，有效提升了PID控制器参数整定的效率，并提高了控制器的鲁棒性能。
+传统经典控制方法与现代人工智能技术、智能优化算法的结合，能够显著提升主动悬架控制性能，也已成为当前车辆悬架控制领域的重要研究方向之一。
+
+\subsubsection{现代控制方法}
+现代控制方法主要包括最优控制、模型预测控制（MPC）、鲁棒控制以及自适应控制等先进控制策略，
+这些方法能够有效解决车辆主动悬架系统存在的非线性特征、参数不确定性、建模复杂性及多种性能指标综合优化问题。
+最优控制是指在允许的约束条件下，通过最优化算法寻求满足给定性能评价指标的最优控制输入信号。
+其中典型的代表有线性二次型最优控制（LQR）和动态规划等。文献\inlinecite{2020Control}通过对主动悬架系统中PID控制器与LQR控制器进行性能分析与比较指出，
+PID控制器更倾向于对车身加速度的优化，而LQR控制器则更有利于实现对车身位移的优化。
+研究表明，LQR控制方法的关键在于性能指标函数的合理设计及优化求解。如何设计适合实际工况的性能指标函数，众多学者进行了深入的研究。他们大多通过一些
+启发式算法如遗传算法、粒子群算法、蚁群算法等对性能指标函数中的权重系数进行优化，以提升LQR控制器的性能表现\cite{Ren_Funkhouser_2023,2023GA}。
+此外，针对不同道路状况，LQR控制器参数可以适时调整，如文献\inlinecite{zou2024active}提出了一种改进的差分进化算法，通过实时优化控制器权重矩阵系数，有效提高了主动悬架控制系统的性能表现。
+然而LQR控制方法无法处理约束问题，在实际的主动悬架系统中，执行机构的力以及系统状态存在一定的物理约束，这使得LQR方法在实际应用中受到一定限制。
+为此，MPC方法逐渐被引入到主动悬架系统中。MPC方法通过建立系统的预测模型，基于当前状态预测未来一段时间内的系统行为，
+并通过在线滚动求解有限时间的优化问题，得到一系列最优控制输入序列。相比LQR控制，MPC方法可以显示地处理系统输入和状态的约束问题，并且能够适用于非线性模型。
+当能够获得道路预瞄信息时，MPC方法可以充分利用这些信息，从而实现更加优越地控制性能\cite{2022Active,2019Regionless,2024Model}。
+在实际应用过程中发现MPC方法虽然可以处理约束，且一定程度接近最优解，但其在线求解的优化问题通常计算量较大，实时性较差，针对其优化求解大多转化为序列二次规划问题，
+然后采用一些高效的数值求解算法如内点法、活跃集法等进行求解\cite{JSYZ202505014}。
+
+
+然而由于MPC方法对系统模型的依赖性较强，且通常假设系统为线性时不变系统，因此在面对非线性、时变且具有不确定性的主动悬架系统时，MPC方法的性能表现受到一定影响，系统鲁棒性较差。
+针对上述问题，鲁棒控制方法逐渐被引入到主动悬架系统的控制中，1983年H$\infty$控制算法框架被首次提出\cite{song2024_preview_suspension_cn}，该方法的提出显著增强了控制系统在应对未知外部干扰时的鲁棒性能。
+随后，H$\infty$控制方法被广泛应用于主动悬架系统的控制中，并取得了良好的控制效果\cite{zhang2019Hinf,Afshar2023Hinf}。
+尽管鲁棒控制能够有效增强系统在外部扰动下的稳定性，但其往往依赖于事先已知的不确定性边界，对系统参数显著时变或强非线性的情况仍存在一定局限。
+为进一步提升控制系统对复杂工况的适应能力，自适应控制方法被逐步引入主动悬架系统\cite{zhao2022adaptive,2013Adaptive}。
+其核心思想在于通过在线辨识系统的动态参数或外界扰动，动态地调整控制律和控制参数，确保控制系统始终处于最优或接近最优状态。
+
+\subsubsection{智能控制算法}
+智能控制算法主要包括模糊控制、神经网络控制以及强化学习控制等先进方法，这些算法在应对主动悬架系统的高度非线性、不确定性以及多指标综合优化问题时，表现出更强的适应性和鲁棒性。
+
+模糊控制是一种模仿人类模糊推理与决策思想的智能控制方法，其理论基础为模糊集合理论、模糊语言变量及模糊逻辑推理。
+模糊控制算法因具有较好的容错性能和抗干扰性能，已经在主动悬架系统控制领域得到了广泛的关注与应用。
+然而，仅凭模糊控制算法进行系统控制时易出现较大的稳态误差，因此通常需要与其它先进控制算法进行融合，以改善稳态性能与控制精度\cite{JSYZ202505014}。
+文献\inlinecite{li2013fuzzy}针对存在参数不确定性的主动悬架系统，首先建立了模糊模型来描述系统的不确定性，然后在模糊控制框架内引入H$\infty$控制理论，
+构建满足系统稳定性、鲁棒性以及扰动衰减特性的性能指标，有效提升了闭环系统在复杂工况下的控制性能与稳定可靠性。
+
+神经网络是一类模拟生物神经结构与认知功能的人工智能算法，通常以多层网络结构为核心，通过训练算法调整各层节点间的权重，实现从任意输入到特定理想输出的非线性映射。
+由于神经网络模型内部结构复杂且缺乏内在的可解释性，直接应用于实时控制系统尚存在一定难度。
+然而，采用神经网络进行离线训练获得最优参数以辅助其他控制算法进行在线自整定控制，可较大程度提高控制系统的性能与效率，目前该领域的研究已较为成熟。
+文献\inlinecite{wang2021bp}提出了一种基于BP神经网络优化的PID控制器，用以实时优化主动悬架系统的控制参数，提升车辆行驶舒适性。
+文献\inlinecite{2020Neural}基于时变障碍Lyapunov函数有效约束了主动悬架系统的位移状态，进而采用神经网络逼近辅助悬架系统中的未知非线性项，	
+最后使用动态面控制策略实现对系统的简化近似模型的稳定控制。这一方案不仅有效降低了控制器设计复杂性，同时也显著提高了系统的鲁棒性和自适应能力。
+
+强化学习是一种通过智能体与环境持续交互、并基于奖励函数优化决策策略的新型智能算法，其近年来以较强的优化决策能力逐步被引入控制领域。
+随着GPU等计算硬件及并行技术的发展，实现大数据量处理与实时计算变得更为便捷。
+因AlphaGo首次击败人类棋手的里程碑成果，深度强化学习逐渐受到广泛关注。
+深度强化学习算法通过引入深度神经网络构造策略函数与价值函数，大幅提升了强化学习模型对复杂环境的表征能力、泛化能力以及决策能力，现已在主动悬架控制领域得到初步应用探索。
+文献\inlinecite{lee2022deep}提出了一种基于深度强化学习的悬架系统控制算法，该方法通过设计状态归一化滤波器提高了系统状态的泛化能力；通过与经典天棚控制效果对比分析，
+该算法显示出明显的性能优势与最优控制特性。文献\inlinecite{wang2024deep}针对主动悬架控制问题，
+设计了一种基于深度确定性策略梯度（DDPG）的主动悬架强化学习控制器，以二自由度四分之一车辆模型为研究对象，以主动刚度、主动阻尼为控制输入，
+在随机工况下对车辆模型进行强化学习训练。仿真结果表明，与被动悬架系统相比，所提出的控制方案能够显著提高悬架综合控制性能。
+然而上述算法仍存在训练效率低、训练过程不稳定等问题，且结合道路预瞄信息的深度强化学习算法尚未得到充分探索。
+
+\subsection{安全强化学习与专家引导学习}
+为使强化学习满足安全性要求，约束强化学习与安全强化学习成为重要研究方向。一类方法将安全约束以代价形式纳入策略优化，如约束策略优化（CPO）\cite{achiam2017constrained}、奖励约束策略优化\cite{tessler2019reward} 和 PID-Lagrangian 方法\cite{stooke2020responsive,ma2021feasible}；另一类方法在策略输出端引入安全屏蔽或安全过滤层，如基于自动机的 shielding\cite{alshiekh2018safe}、安全恢复策略\cite{thananjeyan2021recovery}、优势干预\cite{wagener2021safe}、安全探索层\cite{dalal2018safe}、可达性轨迹保护\cite{shao2021reachability} 及基于控制障碍函数的端到端安全控制\cite{cheng2019end,hunt2021verifiably}。此外，结合 Lyapunov、障碍函数与收缩理论的可证安全控制为带稳定性保证的强化学习提供了系统框架\cite{brunke2022safe,dawson2023safe,sikchi2021lyapunov,han2020actor,han2021rlcontrol}。
+
+为缓解训练初期探索效率低的问题，专家引导与示教学习被广泛采用。通过行为克隆对策略网络进行预训练、将专家经验注入回放池或加入行为克隆正则，可显著提升早期样本效率\cite{rajeswaran2018learning,nair2018overcoming,zhang2018pretraining,andrychowicz2017hindsight}；离线到在线强化学习则进一步研究如何在离线数据集上预训练并平稳过渡到在线微调\cite{nair2020awac,kostrikov2022offline,nakamoto2023calql,uchendu2023jumpstart}。残差强化学习是另一类有效范式，其保留一个结构化控制基线，仅学习对基线的残差修正，从而降低搜索空间维度与高风险动作概率\cite{johannink2019residual,silver2018residual,rana2023bayesian}。本课题吸收上述安全强化学习与专家引导学习思想，但最终将 SI-RPPO 定位为安全教师门控、动作可行性约束反馈的直接力输出策略类；残差 prior 分支作为对照消融保留，而不是当前主贡献。
+
+\section{半车主动悬架模型、评价指标与道路预瞄信息建模}
+
+\subsection{非线性半车动力学模型}
+本文采用四自由度半车主动悬架模型，如图~\ref{fig:halfcar} 所示。
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\textwidth]{half-car_suspension.eps}
+	\caption{半车主动悬架系统结构示意图}
+	\label{fig:halfcar}
+\end{figure}
+下标 $f$ 和 $r$ 分别表示前、后位置，$m_b$ 和 $I_p$ 分别表示簧载质量及其绕质心的俯仰转动惯量，$m_{wf}$ 和 $m_{wr}$ 分别表示前、后非簧载质量；$a$ 和 $b$ 分别表示车身质心至前、后悬架安装点的水平距离。车身质心垂向位移和俯仰角分别为 $z_b$ 和 $\theta_b$，前、后非簧载质量垂向位移分别为 $z_{wf}$ 和 $z_{wr}$，前、后轮路面输入分别为 $z_{df}$ 和 $z_{dr}$。由此，状态向量定义为
+\begin{equation}
+x=\left(z_b,\dot z_b,\theta_b,\dot\theta_b,z_{wf},\dot z_{wf},z_{wr},\dot z_{wr}\right)^{\mathrm T}.
+\end{equation}
+根据半车几何关系，车身前、后悬架安装点的垂向位移 $z_{bf}$ 和 $z_{br}$ 为
+\begin{align}
+z_{bf} = z_b+a\sin\theta_b, \quad
+z_{br} = z_b-b\sin\theta_b.
+\label{eq:body_mount_disp}
+\end{align}
+将悬架动行程定义为车身侧安装点相对车轮侧安装点的相对位移，前、后悬架动行程 $\Delta y_f$ 和 $\Delta y_r$ 为
+\begin{align}
+\Delta y_f &= z_{bf}-z_{wf}=z_b+a\sin\theta_b-z_{wf},\\
+\Delta y_r &= z_{br}-z_{wr}=z_b-b\sin\theta_b-z_{wr},
+\label{eq:susp_deflection}
+\end{align}
+对式\eqref{eq:susp_deflection}求时间导数，可得前、后悬架相对速度，即悬架动行程变化率 $\Delta\dot y_f$ 和 $\Delta\dot y_r$：
+\begin{align}
+\Delta \dot y_f &= \dot z_{bf}-\dot z_{wf}=\dot z_b+a\dot\theta_b\cos\theta_b-\dot z_{wf},\\
+\Delta \dot y_r &= \dot z_{br}-\dot z_{wr}=\dot z_b-b\dot\theta_b\cos\theta_b-\dot z_{wr}.
+\end{align}
+考虑悬架弹簧非线性，令 $k_{f1}$ 和 $k_{r1}$ 分别为前、后悬架线性刚度，$k_{nf1}$ 和 $k_{nr1}$ 分别为前、后悬架三次非线性刚度，则前、后悬架弹簧力 $F_{sf}$ 和 $F_{sr}$ 为
+\begin{align}
+F_{sf} = k_{f1}\Delta y_f+k_{nf1}\Delta y_f^3, \quad
+F_{sr} = k_{r1}\Delta y_r+k_{nr1}\Delta y_r^3.
+\label{eq:susp_spring_force}
+\end{align}
+考虑拉伸与压缩过程中的阻尼不对称性，令 $b_e$ 和 $b_c$ 分别表示拉伸阻尼系数和压缩阻尼系数，则前、后悬架阻尼力 $F_{df}$ 和 $F_{dr}$ 为
+\begin{align}
+F_{df} =
+\frac{(b_e+b_c)+(b_e-b_c)\operatorname{sgn}(\Delta\dot y_f)}{2}\Delta\dot y_f,  \quad
+F_{dr} =
+\frac{(b_e+b_c)+(b_e-b_c)\operatorname{sgn}(\Delta\dot y_r)}{2}\Delta\dot y_r.
+\label{eq:susp_damping_force}
+\end{align}
+其中，$\operatorname{sgn}(\cdot)$ 为符号函数。
+令 $k_{f2}$ 和 $k_{r2}$ 分别表示前、后轮胎等效刚度，$b_{f2}$ 和 $b_{r2}$ 分别表示前、后轮胎等效阻尼。前、后轮胎弹性力 $F_{tf}$、$F_{tr}$ 和轮胎阻尼力 $F_{bf}$、$F_{br}$ 分别为
+\begin{align}
+F_{tf} &= k_{f2}\bigl(z_{wf}-z_{df}\bigr), \quad F_{tr} = k_{r2}\bigl(z_{wr}-z_{dr}\bigr), \label{eq:tire_stiffness_force}\\
+F_{bf} &= b_{f2}\bigl(\dot z_{wf}-\dot z_{df}\bigr), \quad F_{br} = b_{r2}\bigl(\dot z_{wr}-\dot z_{dr}\bigr). \label{eq:tire_damping_force}
+\end{align}
+令 $u_{af}$ 和 $u_{ar}$ 分别表示前、后主动执行器作用于车身侧的控制力，并记主动控制力向量为 $u=(u_{af},u_{ar})^{\mathrm T}$。根据牛顿第二定律和绕质心的转动方程，半车主动悬架动力学方程为
+\begin{align}
+m_b\ddot z_b &= -F_{sf}-F_{df}-F_{sr}-F_{dr}+u_{af}+u_{ar}, \label{eq:body}\\
+I_p\ddot\theta_b &= -a(F_{sf}+F_{df})+b(F_{sr}+F_{dr})+a u_{af}-b u_{ar}, \label{eq:pitch}\\
+m_{wf}\ddot z_{wf} &= F_{sf}+F_{df}-F_{tf}-F_{bf}-u_{af}, \label{eq:front_wheel}\\
+m_{wr}\ddot z_{wr} &= F_{sr}+F_{dr}-F_{tr}-F_{br}-u_{ar}. \label{eq:rear_wheel}
+\end{align}
+其中，$F_{sf}+F_{df}$ 和 $F_{sr}+F_{dr}$ 分别为前、后悬架总作用力，$F_{tf}+F_{bf}$ 和 $F_{tr}+F_{br}$ 分别为前、后轮胎动载荷。
+仿真中采用四阶 Runge-Kutta 方法离散化，底层积分步长为 $T_s=\SI{0.001}{s}$，控制周期为 $T_c=\SI{0.01}{s}$。
+
+\subsection{评价指标与优化目标}
+主动悬架控制需要同时考虑舒适性、安全性和能耗。本文选取车身垂向加速度均方根 $\operatorname{RMS}(\ddot z_b)$、俯仰角加速度均方根 $\operatorname{RMS}(\ddot\theta_b)$、悬架动行程峰值、轮胎动载荷均方根、控制力峰值和控制能耗指标作为评价指标。对任一信号 $q(t)$，其均方根定义为
+\begin{equation}
+\operatorname{RMS}(q)=\sqrt{\frac{1}{T_2-T_1}\int_{T_1}^{T_2}q^2(t)\,\mathrm dt},
+\label{eq:rms}
+\end{equation}
+其中 $T_1$ 为稳定段起始时间。在主动悬架控制设计中，还需考虑悬架行程约束 $|\Delta y_f|\le\Delta y_{f\max}$、$|\Delta y_r|\le\Delta y_{r\max}$，轮胎动载荷约束以及执行器力限幅 $|u_{af}|,|u_{ar}|\le u_{\max}$。
+
+MPC 和强化学习采用统一的多目标代价函数。连续时间形式可写为
+\begin{equation}
+\begin{aligned}
+J=\frac{1}{T}\int_0^T
+\Bigg(
+&w_1\left(\frac{\ddot z_b}{a_{z,\max}}\right)^2
++w_2\left(\frac{\ddot\theta_b}{\alpha_{\theta,\max}}\right)^2+w_3\bigg(
+\left(\frac{\Delta y_f}{\Delta y_{\max}}\right)^2
++\left(\frac{\Delta y_r}{\Delta y_{\max}}\right)^2
+\bigg)  \\
+&+w_4\bigg(
+\left(\frac{F_{tf}+F_{bf}}{F_{zf,0}}\right)^2
++\left(\frac{F_{tr}+F_{br}}{F_{zr,0}}\right)^2
+\bigg)+w_5\left\|\frac{\boldsymbol u}{u_{\max}}\right\|_2^2
+\Bigg)\,\mathrm{d}t .
+\end{aligned}
+\label{eq:cost}
+\end{equation}
+
+其中，$a_{z,\max}$、$\alpha_{\theta,\max}$、$\Delta y_{\max}$、$F_{zf,0}$、$F_{zr,0}$ 和 $u_{\max}$ 分别为车身垂向加速度、俯仰角加速度、悬架动行程、前轮胎动载荷、后轮胎动载荷以及主动悬架控制力的归一化因子。
+
+强化学习奖励函数取 $r_t=-\ell_t$，其中 $\ell_t$ 为式\eqref{eq:cost}在离散时刻的瞬时代价。该设计使智能体在降低车身振动的同时避免悬架击穿、轮胎跳动和执行器饱和。
+
+\subsection{道路预瞄信息建模与控制接口}
+道路信息可由基于车辆响应的间接估计或基于外部传感器的非接触测量获得。间接估计通常利用簧载质量加速度、悬架动行程和轮胎响应反推路面轮廓，
+典型方法包括卡尔曼滤波、滑模观测器、频域估计和数据驱动分类\cite{Tu2015adaptive,liu2020line,Qin2015road,kang2019roughness,falahati2021observer}。
+该类方法无需额外感知硬件，但只能在车辆受到激励后估计路面，难以满足主动悬架提前控制需求。非接触测量通常利用视觉、激光雷达或多传感融合提前获取车前道路轮廓\cite{zhao2023comprehensive,cheng2019road,yang2021automatic,dewangan2021rcnet,ni2020roadprofile}。
+
+道路不平度通常采用 ISO 8608 标准的功率谱密度模型进行描述与仿真\cite{mucka2020wbv,mucka2021vdv,johannesson2016roughness,hua2018random,hari2022spectral}。
+本文假设上游感知系统已经输出沿车轮轨迹的道路高程序列，并重点研究该预瞄序列如何进入主动悬架控制器。设车速为 $v$、轴距为 $l=a+b$，前轮路面输入为 $z_{df}(t)$，则在直行车况下后轮路面输入可近似表示为
+\begin{equation}
+z_{dr}(t)=z_{df}\left(t-\frac{l}{v}\right),
+\label{eq:rear_delay}
+\end{equation}
+预瞄控制器在当前时刻可获得长度为 $N_p$ 的路面序列
+\begin{equation}
+\mathcal{P}(t)=\left\{\left(z_{df}(t+kT_p),z_{dr}(t+kT_p)\right)\right\}_{k=1}^{N_p},
+\label{eq:preview_seq}
+\end{equation}
+其中 $T_p$ 为预瞄采样周期。该序列既可直接用于 MPC 预测，也可作为 Transformer 编码器的输入。
+
+从现有文献看，路面感知研究已从“路面类别识别”逐步扩展到“用于控制的连续可预瞄高程序列重建”\cite{liang2022experimental,zhang2022vehicle}。轴距预瞄利用前轮已测信息推断后轮路面输入\cite{pang2019preview,zhao2019wheelbase,liu2023superwheelbase}，而轴前预瞄则利用车前传感器提前获取整车轨迹上的路面信息\cite{wu2020preview,youn2022antijerk}。因此，本课题将预瞄信息统一抽象为“带有可量化时延、噪声和缺失特性的连续高程序列”，并将研究重点放在控制策略对该序列的利用效率和鲁棒性上。
+
+\section{基于滑模控制的周期滞后反馈控制方法}
+\label{sec:spdf_method}
+
+该方法是本课题已完成的鲁棒控制方法，其目标是在存在参数不确定性和外部路面扰动的半车主动悬架系统中，实现车身垂向位移与俯仰角跟踪误差的实用指定时间收敛。
+与 PID、天棚控制等固定反馈方法相比，SPDF 直接面向主动悬架的非线性模型构造控制律；与普通滑模控制相比，该方法在滑模控制框架中引入周期滞后反馈机制，
+使闭环误差能够在预先给定时间后进入可调小邻域，并利用连续切换函数缓解滑模控制中的高频抖振问题。
+该部分成果已形成论文 ``Practical Prescribed-Time Control for Active Suspension Systems via Periodic Delayed Sliding Mode Control''，并在 International Journal of Robust and Nonlinear Control 期刊发表。
+
+\subsection{方法动机与总体思路}
+主动悬架控制不仅要求降低车身垂向加速度和俯仰角加速度，还需要保证悬架动行程、轮胎动载荷和执行器力不超过物理约束。
+对于半车模型而言，车身垂向运动和俯仰运动相互耦合，车辆载荷变化、质心位置偏移、悬架刚度和阻尼参数漂移都会改变系统动力学，使传统线性反馈控制难以同时保证收敛速度和控制精度。
+
+为解决上述问题，SPDF 首先将半车主动悬架模型转化为垂向和俯仰两个误差子系统，并将执行器力等效为广义垂向控制力 $u_b$ 和俯仰控制力 $u_{\theta_b}$；
+随后分别为两个误差子系统构造周期滞后滑模变量，并设计包含基于模型的力补偿、周期滞后反馈、连续滑模项和不确定性补偿项的控制律；
+最后通过力分配关系将 $u_b$ 和 $u_{\theta_b}$ 映射为前、后主动悬架执行器力。该结构使控制器既能利用半车模型的物理结构，又能在不确定扰动存在时保持较强鲁棒性。
+
+\subsection{预备知识}
+SPDF 方法的关键理论基础来自周期滞后反馈系统的实用指定时间收敛性质。为便于后续控制律设计与稳定性分析，本节给出两个核心引理及其证明。相关结论源于周期滞后反馈理论\cite{zhou2021fixed,ding2025spdf}，本报告结合本文符号体系重新表述如下。
+
+\begin{definition}
+给定常数 $h>0$ 和非负整数 $r$，若对称函数 $R_h(\cdot):\mathbb R\to\mathbb R$ 满足以下条件，则称 $R_h(\cdot)$ 为 $\boldsymbol S^{(r)}(h)$ 函数：
+\begin{enumerate}[wide]
+  \item $R_h(\cdot)$ 为 $2h$ 周期函数，且对任意 $t\in(0,h)$ 有 $R_h(t)=0$；
+  \item 对任意 $t\in(h,2h)$ 有 $R_h(t)\geq0$，且存在 $h^\ast\in(h,2h)$ 使 $R_h(h^\ast)>0$；
+  \item $R_h(\cdot)\in \boldsymbol C^r$，并满足 $R_h^{(i)}(h)=R_h^{(i)}(2h)=0,\ i=0,1,\ldots,r$。
+\end{enumerate}
+\end{definition}
+
+\begin{lemma}
+\label{lem:spdf_linear}
+给定预设时间 $T>0$。对滑模变量 $s(t)$，若正定函数 $V(s(t))=s^2(t)/2$ 满足
+\begin{equation}
+\dot V(s(t))\leq -aV(s(t))-K_{(a,h)}(t)V(s(t-h))+\varepsilon,
+\label{eq:spdf_lemma1_cond}
+\end{equation}
+其中 $a>0$、$h=T/2$、$\varepsilon>0$，且
+\begin{equation}
+\begin{aligned}
+K_{(a,h)}(t)&=R_h(t)W\mathrm e^{-a(h-2t)},\\
+W&=W_c^{-1}(a,h),\qquad
+W_c(a,h)=\int_h^{2h}\mathrm e^{2as}R_h(s)\mathrm ds,
+\end{aligned}
+\label{eq:spdf_periodic_gain}
+\end{equation}
+则当 $t\geq T$ 时，有
+\begin{equation}
+|s(t)|\leq \sqrt{\frac{2\varepsilon}{a}}.
+\label{eq:spdf_lemma1_bound}
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+记 $V_0=V(s(0))$。由式\eqref{eq:spdf_lemma1_cond}可引入非负函数 $\varphi(t)\geq0$，使
+\begin{equation}
+\dot V(s(t))=-aV(s(t))-K_{(a,h)}(t)V(s(t-h))+\varepsilon-\varphi(t).
+\label{eq:spdf_lemma1_equal}
+\end{equation}
+当 $t\in(0,h)$ 时，由 $K_{(a,h)}(t)=0$ 得
+\begin{align}
+V(s(t))
+&=\mathrm e^{-at}V_0+\frac{\varepsilon}{a}\left(1-\mathrm e^{-at}\right)
+-\int_0^t \mathrm e^{-a(t-r)}\varphi(r)\mathrm dr \notag\\
+&\leq \mathrm e^{-at}\left(V_0-\frac{\varepsilon}{a}\right)+\frac{\varepsilon}{a}.
+\label{eq:spdf_lemma1_first_interval}
+\end{align}
+当 $t\in(h,2h)$ 时，对式\eqref{eq:spdf_lemma1_equal}积分可得
+\begin{align}
+V(s(t))={}&\mathrm e^{-a(t-h)}V(s(h))
+\frac{\varepsilon}{a}\left(1-\mathrm e^{-a(t-h)}\right)
+-\int_h^t \mathrm e^{-a(t-r)}\varphi(r)\mathrm dr \notag\\
+&-\int_h^t \mathrm e^{-a(t-r)}K_{(a,h)}(r)V(s(r-h))\mathrm dr .
+\label{eq:spdf_lemma1_second_interval}
+\end{align}
+将式\eqref{eq:spdf_lemma1_first_interval}代入 $V(s(h))$ 和 $V(s(r-h))$，并利用 $\varphi(t)\geq0$，可得
+\begin{align}
+V(s(t))
+&\leq
+\mathrm e^{-at}\left(V_0-\frac{\varepsilon}{a}\right)
+\left(1-\int_h^t \mathrm e^{ah}K_{(a,h)}(r)\mathrm dr\right)
+\frac{\varepsilon}{a}.
+\label{eq:spdf_lemma1_estimate}
+\end{align}
+定义
+\begin{equation}
+E(t)=1-\int_h^t \mathrm e^{ah}K_{(a,h)}(r)\mathrm dr .
+\label{eq:spdf_lemma1_E}
+\end{equation}
+由 $K_{(a,h)}(t)$ 的构造可知，当 $t=T=2h$ 时 $E(T)=0$。因此，由式\eqref{eq:spdf_lemma1_estimate}可得 $V(s(T))\leq \varepsilon/a$，即 $|s(T)|\leq \sqrt{2\varepsilon/a}$。结合周期滞后反馈结构的周期延拓性，可进一步得到对任意 $t\geq T$ 均有式\eqref{eq:spdf_lemma1_bound}成立。
+\end{proof}
+
+\begin{lemma}
+\label{lem:spdf_nonlinear}
+给定预设时间 $T>0$。对滑模变量 $s(t)$，若正定函数 $V(s(t))=s^2(t)/2$ 满足
+\begin{equation}
+\dot V(s(t))\leq
+-\frac{a}{1-\tau}V(s(t))
+-\frac{K_{(a,h)}(t)}{1-\tau}V^\tau(s(t))V^{1-\tau}(s(t-h))
+\varepsilon,
+\label{eq:spdf_lemma2_cond}
+\end{equation}
+其中 $a>0$、$h=T/2$、$0<\tau<1$、$\varepsilon>0$，且 $K_{(a,h)}(t)$ 按引理~\ref{lem:spdf_linear}定义，则当 $t\geq T$ 时，有
+\begin{equation}
+|s(t)|\leq \sqrt{\frac{2(1-\tau)\varepsilon}{a}}.
+\label{eq:spdf_lemma2_bound}
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+先证明存在 $t_1\in(0,T)$，使 $|s(t_1)|\leq \sqrt{2(1-\tau)\varepsilon/a}$。反设对任意 $t\in(0,T)$ 都有
+$|s(t)|>\sqrt{2(1-\tau)\varepsilon/a}$。令
+\begin{equation}
+W(s(t))=V^{1-\tau}(s(t)),
+\label{eq:spdf_lemma2_W}
+\end{equation}
+则 $V(s(t))=W^{1/(1-\tau)}(s(t))$。由链式法则和式\eqref{eq:spdf_lemma2_cond}可得
+\begin{align}
+\dot W(s(t))
+&\leq -aW(s(t))-K_{(a,h)}(t)W(s(t-h))
+\varepsilon(1-\tau)V^{-\tau}(s(t)).
+\label{eq:spdf_lemma2_wdot}
+\end{align}
+根据反设，
+\begin{equation}
+\varepsilon(1-\tau)V^{-\tau}(s(t))
+=\varepsilon(1-\tau)\left(\frac{s^2(t)}{2}\right)^{-\tau}
+\leq ((1-\tau)\varepsilon)^{1-\tau}a^\tau .
+\label{eq:spdf_lemma2_eps_bound}
+\end{equation}
+将式\eqref{eq:spdf_lemma2_eps_bound}代入式\eqref{eq:spdf_lemma2_wdot}，可得
+\begin{equation}
+\dot W(s(t))
+\leq -aW(s(t))-K_{(a,h)}(t)W(s(t-h))
+((1-\tau)\varepsilon)^{1-\tau}a^\tau .
+\label{eq:spdf_lemma2_linearized}
+\end{equation}
+式\eqref{eq:spdf_lemma2_linearized}与引理~\ref{lem:spdf_linear}的形式一致。因此在 $t=T$ 时有
+\begin{equation}
+\left(\frac{s^2(T)}{2}\right)^{1-\tau}
+\leq
+\left(\frac{(1-\tau)\varepsilon}{a}\right)^{1-\tau},
+\label{eq:spdf_lemma2_contradiction}
+\end{equation}
+即 $|s(T)|\leq \sqrt{2(1-\tau)\varepsilon/a}$，这与反设矛盾。因此存在 $t_1\in(0,T)$ 使 $s(t)$ 进入式\eqref{eq:spdf_lemma2_bound}所给小邻域。
+
+当 $t\geq t_1$ 且 $|s(t)|\leq \sqrt{2(1-\tau)\varepsilon/a}$ 时，由式\eqref{eq:spdf_lemma2_cond}可得
+\begin{equation}
+\dot V(s(t))\leq -\frac{a}{1-\tau}V(s(t))+\varepsilon,
+\label{eq:spdf_lemma2_invariant}
+\end{equation}
+从而该小邻域具有正不变性。再结合周期滞后系统的周期性，可知对任意 $t\geq T$，均有式\eqref{eq:spdf_lemma2_bound}成立。
+\end{proof}
+
+\subsection{周期滞后滑模面设计}
+设 $e_i$ 和 $\dot e_i$ 分别表示第 $i$ 个误差子系统的位置误差和速度误差，其中 $i\in\{b,\theta_b\}$ 分别对应车身垂向子系统和俯仰子系统。给定期望收敛时间 $T$，取周期滞后长度 $h=T/4$，构造周期滞后滑模变量
+\begin{equation}
+s_i(t)=\dot e_i(t)+a_i e_i(t)+K_i(t)e_i(t-h),
+\quad i\in\{b,\theta_b\},
+\label{eq:spdf_surface}
+\end{equation}
+其中 $a_i>0$ 为收敛精度相关参数，$K_i(t)$ 为周期时变增益。与普通滑模面只依赖当前误差不同，式\eqref{eq:spdf_surface}额外引入滞后误差 $e_i(t-h)$，使闭环误差动力学具有周期滞后结构，从而能够在滑模控制框架下利用周期滞后反馈实现实用指定时间收敛。
+
+周期增益 $K_i(t)$ 在初始阶段为零，在 $2h$ 之后切换为周期滞后反馈增益：
+\begin{equation}
+K_i(t)=
+\begin{cases}
+0, & t\in(0,2h),\\
+K_{(a_i,h)}(t), & t\in(2h,\infty),
+\end{cases}
+\label{eq:spdf_gain}
+\end{equation}
+其中 $K_{(a_i,h)}(t)$ 由周期函数 $R_h(t)$ 及归一化系数确定。实际实现中选取
+\begin{equation}
+R_h(t)=
+\begin{cases}
+0, & t\in(0,h),\\
+\sin^2\left(\dfrac{\pi t}{h}\right), & t\in(h,2h),
+\end{cases}
+\end{equation}
+并按周期方式延拓。该设计的作用是：在控制初期避免滞后项突变引起的冲击，在进入周期反馈阶段后通过 $K_i(t)e_i(t-h)$ 加速误差收敛。
+
+\subsection{连续滑模控制律与抖振抑制}
+基于式\eqref{eq:spdf_surface}，SPDF 对每个误差子系统设计如下控制律：
+\begin{equation}
+\begin{aligned}
+v_i={}&\frac{1}{g_i(t)}
+\Bigg(
+-\frac{2}{\pi}\rho_i(t)\arctan\left(\frac{\rho_i(t)s_i}{\varepsilon_i}\right)
+-a_i\dot e_i -\dot K_i(t)e_i(t-h)-K_i(t)\dot e_i(t-h)
++u_{i0}+v_{i0}
+\Bigg),
+\end{aligned}
+\label{eq:spdf_law}
+\end{equation}
+其中 $v_i$ 为等效虚拟控制输入，$g_i(t)$ 为控制增益，$\rho_i(t)$ 为正的鲁棒增益，$\varepsilon_i>0$ 为连续切换函数的平滑参数。式\eqref{eq:spdf_law}中的前几项用于抵消误差动力学中的已知项和周期滞后项，$u_{i0}$ 用于构造实用指定时间收敛项，$v_{i0}$ 用于补偿模型不确定性和增益扰动。
+
+实用指定时间收敛项采用
+\begin{equation}
+u_{i0}=-\frac{a_i}{2(1-\tau_i)}s_i
+-\frac{K_i(t)}{2(1-\tau_i)}
+\mathrm{sig}^{2\tau_i-1}(s_i(t))|s_i(t-h)|^{2-2\tau_i},
+\quad \frac{1}{2}<\tau_i<1,
+\label{eq:spdf_u0}
+\end{equation}
+其中 $\mathrm{sig}^{p}(s)=|s|^p\operatorname{sign}(s)$。由于 $2\tau_i-1>0$，该项在原点附近连续，可以避免普通符号函数导致的剧烈抖振。同时，式\eqref{eq:spdf_law}使用 $\arctan(\cdot)$ 替代理想开关函数，使控制输入从不连续切换转化为连续饱和型切换，从而更适合执行器实际实现。
+
+\subsection{实用指定时间稳定性与方法特点}
+在 SPDF 控制律下，可构造 Lyapunov 函数 $V_i=s_i^2/2$ 分析滑模变量的收敛性。为给出完整证明，先定义
+\begin{equation}
+\bar\varepsilon_i=\sqrt{\frac{2(1-\tau_i)\varepsilon_i^\ast}{a_i}},
+\qquad
+\alpha_i=\arcsin\left(\frac{\pi}{\sqrt{a_i^2h^2+\pi^2}}\right),
+\quad i\in\{b,\theta_b\},
+\label{eq:spdf_eps_alpha}
+\end{equation}
+其中 $\varepsilon_i^\ast>0$ 为连续切换近似和不确定性上界共同引入的小正数，且 $\alpha_i\in(0,\pi/2)$。
+
+\begin{theorem}
+\label{thm:spdf_practical_pt}
+在式\eqref{eq:spdf_surface}和式\eqref{eq:spdf_law}所示 SPDF 控制律作用下，车身垂向误差子系统和俯仰误差子系统均满足实用指定时间稳定性。具体地，当 $t\geq T$ 时，有
+\begin{equation}
+|e_i(t)|\leq Q_i,\qquad |\dot e_i(t)|\leq \bar Q_i,\qquad i\in\{b,\theta_b\},
+\label{eq:spdf_bound}
+\end{equation}
+其中
+\begin{equation}
+Q_i=\sqrt{\frac{2(1-\tau_i)\varepsilon_i^\ast}{a_i^3}},
+\qquad
+\bar Q_i=
+\sqrt{\frac{2(1-\tau_i)\varepsilon_i^\ast}{a_i}}
+\left(
+2+\frac{4\mathrm e^{a_ih(1-2\alpha_i/\pi)}}{\mathrm e^{2a_ih}-1}
+\right).
+\label{eq:spdf_Q}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+证明以第 $i$ 个误差子系统为例，其中 $i\in\{b,\theta_b\}$。由式\eqref{eq:spdf_surface}可写出
+\begin{equation}
+s_i(t)=\dot e_i(t)+a_i e_i(t)+K_i(t)e_i(t-h).
+\label{eq:spdf_si_repeat}
+\end{equation}
+沿闭环轨迹对 $V_i=s_i^2/2$ 求导，并代入式\eqref{eq:spdf_law}和式\eqref{eq:spdf_u0}，可得
+\begin{equation}
+\dot V_i(t)\leq
+-\frac{a_i}{1-\tau_i}V_i(t)
+-\frac{K_i(t)}{1-\tau_i}V_i^{\tau_i}(t)V_i^{1-\tau_i}(t-h)
++\varepsilon_i^{\ast},
+\label{eq:spdf_lyapunov}
+\end{equation}
+其中不确定扰动项、增益摄动项以及连续 $\arctan(\cdot)$ 近似带来的残余项被统一上界为 $\varepsilon_i^\ast$。式\eqref{eq:spdf_lyapunov}与引理~\ref{lem:spdf_nonlinear}的条件一致，因此滑模变量在周期滞后反馈作用下满足
+\begin{equation}
+|s_i(t)|\leq \bar\varepsilon_i,\qquad t\geq 2h.
+\label{eq:spdf_s_bound}
+\end{equation}
+
+接下来证明误差 $e_i$ 及其导数也在预设时间后进入小邻域。由式\eqref{eq:spdf_si_repeat}和式\eqref{eq:spdf_s_bound}，当 $t\geq2h$ 时有
+\begin{equation}
+\left|\dot e_i(t)+a_i e_i(t)+K_{(a_i,h)}(t)e_i(t-h)\right|\leq \bar\varepsilon_i.
+\label{eq:spdf_error_ineq}
+\end{equation}
+令 $\kappa=t-2h$，并定义 $z_i(\kappa)=e_i(t)$。利用 $K_{(a_i,h)}(t)$ 的 $2h$ 周期性，式\eqref{eq:spdf_error_ineq}可改写为
+\begin{equation}
+\left|\dot z_i(\kappa)+a_i z_i(\kappa)+K_{(a_i,h)}(\kappa)z_i(\kappa-h)\right|
+\leq \bar\varepsilon_i.
+\label{eq:spdf_z_ineq}
+\end{equation}
+将绝对值不等式分解为上下两个标量不等式，可得
+\begin{equation}
+-\bar\varepsilon_i
+\leq
+\dot z_i(\kappa)+a_i z_i(\kappa)+K_{(a_i,h)}(\kappa)z_i(\kappa-h)
+\leq
+\bar\varepsilon_i .
+\label{eq:spdf_z_upper_lower}
+\end{equation}
+对式\eqref{eq:spdf_z_upper_lower}采用与引理~\ref{lem:spdf_linear}相同的积分估计：当 $\kappa\in(0,h)$ 时，由 $K_{(a_i,h)}(\kappa)=0$ 得
+\begin{equation}
+|z_i(\kappa)|
+\leq
+\mathrm e^{-a_i\kappa}\left(|z_i(0)|-\frac{\bar\varepsilon_i}{a_i}\right)
+\frac{\bar\varepsilon_i}{a_i}.
+\label{eq:spdf_z_first}
+\end{equation}
+当 $\kappa\in(h,2h)$ 时，将 $z_i(h)$ 和 $z_i(r-h)$ 的表达式代入变参数公式，可得
+\begin{equation}
+|z_i(\kappa)|
+\leq
+\mathrm e^{-a_i\kappa}\left(|z_i(0)|-\frac{\bar\varepsilon_i}{a_i}\right)E_i(\kappa)
+\frac{\bar\varepsilon_i}{a_i},
+\label{eq:spdf_z_second}
+\end{equation}
+其中
+\begin{equation}
+E_i(\kappa)=1-\int_h^\kappa \mathrm e^{a_ih}K_{(a_i,h)}(r)\mathrm dr .
+\label{eq:spdf_Ei}
+\end{equation}
+由周期滞后增益的归一化构造可知 $E_i(2h)=0$，因此
+\begin{equation}
+|z_i(2h)|\leq \frac{\bar\varepsilon_i}{a_i}.
+\label{eq:spdf_z_2h}
+\end{equation}
+再利用 $K_{(a_i,h)}(\cdot)$ 的周期性，可将上述估计逐周期延拓，得到
+\begin{equation}
+|e_i(t)|=|z_i(t-2h)|
+\leq
+\frac{\bar\varepsilon_i}{a_i}
+=
+\sqrt{\frac{2(1-\tau_i)\varepsilon_i^\ast}{a_i^3}}
+=Q_i,
+\qquad t\geq4h=T.
+\label{eq:spdf_e_bound_proof}
+\end{equation}
+
+最后证明速度误差有界。由式\eqref{eq:spdf_error_ineq}可得
+\begin{equation}
+|\dot e_i(t)|
+\leq
+\bar\varepsilon_i+a_i|e_i(t)|+K_{(a_i,h)}(t)|e_i(t-h)|.
+\label{eq:spdf_edot_start}
+\end{equation}
+当 $K_{(a_i,h)}(t)=0$ 时，结合式\eqref{eq:spdf_e_bound_proof}有
+\begin{equation}
+|\dot e_i(t)|\leq 2\bar\varepsilon_i.
+\label{eq:spdf_edot_zeroK}
+\end{equation}
+当 $K_{(a_i,h)}(t)\neq0$ 时，由 $R_h(t)=\sin^2(\pi t/h)$ 以及式\eqref{eq:spdf_periodic_gain}可得
+\begin{equation}
+K_{(a_i,h)}(t)
+\leq
+\frac{4a_i\mathrm e^{a_ih(1-2\alpha_i/\pi)}}{\mathrm e^{2a_ih}-1}.
+\label{eq:spdf_Kmax}
+\end{equation}
+将式\eqref{eq:spdf_e_bound_proof}和式\eqref{eq:spdf_Kmax}代入式\eqref{eq:spdf_edot_start}，得到
+\begin{equation}
+|\dot e_i(t)|
+\leq
+\bar\varepsilon_i
+\left(
+2+\frac{4\mathrm e^{a_ih(1-2\alpha_i/\pi)}}{\mathrm e^{2a_ih}-1}
+\right)
+=\bar Q_i,\qquad t\geq T.
+\label{eq:spdf_edot_bound_proof}
+\end{equation}
+综上，式\eqref{eq:spdf_bound}成立，两个误差子系统均满足实用指定时间稳定性。
+\end{proof}
+
+定理~\ref{thm:spdf_practical_pt}表明，参数 $T$ 主要决定误差进入小邻域的时间，$a_i$ 和 $\tau_i$ 主要影响收敛精度及控制输入幅值。减小 $T$ 或增大 $a_i$ 通常可以提升动态响应，但会增加执行器能耗和控制力峰值，因此需要在舒适性、收敛速度和执行器约束之间折中。
+
+\subsection{仿真实验对比}
+\label{sec:spdf_experiment}
+
+为验证 SPDF 的减振性能，本节在随机路面和凸包路面下对被动悬架、PID、自适应反步控制和 SPDF 进行对比。其中，随机路面采用 ISO 8608 标准生成 B 级和 C 级路面，
+B 级路面车速为 \SI{80}{km/h}，C 级路面车速为 \SI{30}{km/h}；凸包路面采用高度为 \SI{0.1}{m} 的半正弦路障，车速为 \SI{80}{km/h}。
+自适应反步控制选取文献~\cite{sun2012adaptive} 中的典型模型控制器作为对照，其与 SPDF 均属于基于模型的非线性控制方法，但 SPDF 进一步利用周期滞后反馈结构实现实用指定时间收敛。
+
+实验评价指标包括车身垂向加速度均方根值、车身俯仰角加速度均方根值、最大俯仰角、最大悬架动行程、最大轮胎动载荷和最大主动控制力。
+前两项指标主要反映乘坐舒适性，最大俯仰角反映车身姿态抑制能力，悬架动行程和轮胎动载荷分别对应悬架击穿风险与轮胎接地安全性，控制力峰值用于衡量执行器需求。
+
+\begin{table}[htbp]
+\centering
+\caption{SPDF 与典型控制方法在不同路况下的实验结果对比}
+\label{tab:spdf_pid_adaptive_compare}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{clcccc}
+\toprule
+路况 & 指标 & 被动悬架 & PID & 自适应反步 & SPDF \\
+\midrule
+\multirow{9}{*}{B 级随机路面}
+& $RMS(\ddot z_b)$ & 0.215 & 0.0288 & 0.00447 & \textbf{0.00186} \\
+& $RMS(\ddot\theta_b)$ & 0.491 & 0.0432 & 0.0109 & \textbf{0.00411} \\
+& $\max |\theta_b|$ & 0.00502 & 0.000386 & 0.000119 & \textbf{0.00000909} \\
+& $\max |\Delta y_f|$ & \textbf{0.0225} & 0.0265 & 0.0286 & 0.0283 \\
+& $\max |\Delta y_r|$ & \textbf{0.0211} & 0.0262 & 0.0283 & 0.0283 \\
+& $\max |F_{tf}|$ & 3940 & 3760 & 3680 & \textbf{3670} \\
+& $\max |F_{tr}|$ & \textbf{3200} & 3460 & 3510 & 3520 \\
+& $\max |u_{af}|$ & 0 & \textbf{705} & 750 & 747 \\
+& $\max |u_{ar}|$ & 0 & \textbf{609} & 677 & 674 \\
+\midrule
+\multirow{9}{*}{C 级随机路面}
+& $RMS(\ddot z_b)$ & 0.232 & 0.0308 & 0.00500 & \textbf{0.00195} \\
+& $RMS(\ddot\theta_b)$ & 0.557 & 0.0528 & 0.0123 & \textbf{0.00465} \\
+& $\max |\theta_b|$ & 0.0136 & 0.000861 & 0.000303 & \textbf{0.0000140} \\
+& $\max |\Delta y_f|$ & \textbf{0.0295} & 0.0523 & 0.0545 & 0.0538 \\
+& $\max |\Delta y_r|$ & \textbf{0.0222} & 0.0523 & 0.0539 & 0.0537 \\
+& $\max |F_{tf}|$ & \textbf{5080} & 5320 & 5270 & 5250 \\
+& $\max |F_{tr}|$ & \textbf{5520} & 5940 & 5920 & 5910 \\
+& $\max |u_{af}|$ & 0 & \textbf{1120} & \textbf{1120} & 1130 \\
+& $\max |u_{ar}|$ & 0 & \textbf{1010} & 1040 & 1030 \\
+\midrule
+\multirow{9}{*}{凸包路面}
+& $RMS(\ddot z_b)$ & 0.0875 & 0.0348 & 0.00222 & \textbf{0.000947} \\
+& $RMS(\ddot\theta_b)$ & 0.216 & 0.0617 & 0.00503 & \textbf{0.00158} \\
+& $\max |\theta_b|$ & 0.00219 & 0.0000849 & 0.000142 & \textbf{0.00000933} \\
+& $\max |\Delta y_f|$ & \textbf{0.0166} & 0.0206 & 0.0211 & 0.0211 \\
+& $\max |\Delta y_r|$ & \textbf{0.0142} & 0.0172 & 0.0177 & 0.0178 \\
+& $\max |F_{tf}|$ & 52200 & 52200 & \textbf{52100} & \textbf{52100} \\
+& $\max |F_{tr}|$ & \textbf{60300} & \textbf{60300} & \textbf{60300} & \textbf{60300} \\
+& $\max |u_{af}|$ & 0 & \textbf{2200} & 2580 & 2570 \\
+& $\max |u_{ar}|$ & 0 & \textbf{2460} & 2910 & 2900 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\noindent{\small SPDF 对比实验数据来源于 IJRNC 论文原始实验，当前代码框架支持复现 SPDF 半车控制律，但未包含反步控制器实现。}
+
+表~\ref{tab:spdf_pid_adaptive_compare} 表明，SPDF 在三类路况下均显著降低车身垂向加速度和俯仰角加速度。
+在 B 级随机路面下，SPDF 将 $RMS(\ddot z_b)$ 从被动悬架的 0.215 降至 0.00186，相比 PID 和自适应反步控制也进一步降低；
+在 C 级随机路面下，SPDF 对车身垂向和俯仰振动仍保持最优抑制效果；在凸包路面下，SPDF 对冲击响应具有更强的快速收敛能力，车身垂向加速度均方根值低于 PID 和自适应反步控制。
+需要指出的是，主动控制方法通常会增加悬架动行程和控制力需求，这是舒适性提升与执行器约束之间的典型权衡。
+因此，SPDF 的优势主要体现在车身振动和姿态响应抑制方面，同时需要结合执行器限幅和悬架行程约束进行参数整定。
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.85\textwidth]{class_acc.eps}
+	\caption{随机路面下不同控制方法的车身垂向加速度与俯仰角加速度响应}
+	\label{fig:spdf_class_acc}
+\end{figure}
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.85\textwidth]{class_PSD.eps}
+	\caption{随机路面下不同控制方法的车身垂向加速度与俯仰角加速度功率谱密度}
+	\label{fig:spdf_class_psd}
+\end{figure}
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.85\textwidth]{bump_acc.eps}
+	\caption{凸包路面下不同控制方法的车身垂向加速度与俯仰角加速度响应}
+	\label{fig:spdf_bump_acc}
+\end{figure}
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.85\textwidth]{bump_dis.eps}
+	\caption{凸包路面下不同控制方法的车身垂向位移与俯仰角响应}
+	\label{fig:spdf_bump_dis}
+\end{figure}
+
+图~\ref{fig:spdf_class_acc} 和图~\ref{fig:spdf_class_psd} 进一步说明，在随机路面宽频激励下，SPDF 不仅降低时域加速度幅值，
+也在主要振动频段内降低响应能量。图~\ref{fig:spdf_bump_acc} 和图~\ref{fig:spdf_bump_dis} 表明，在凸包冲击输入下，SPDF 能够更快抑制车身垂向和俯仰振动，
+使系统在短时间内回到平衡邻域，这与前述实用指定时间收敛分析一致。
+
+
+SPDF 在随机路面和凸包路面下均表现出较强的车身振动抑制能力。但需要指出的是，SPDF 的优势建立在较准确的车辆动力学模型、参数上界和执行器建模基础上，对道路预瞄信息的利用也较有限。
+因此，在模型失配、感知误差和复杂未知工况下，仍有必要进一步发展能够融合道路预瞄信息并具备数据驱动自适应能力的强化学习控制方法。
+
+
+\FloatBarrier
+
+\section{基于安全教师门控与动作可行性约束反馈的在线 PPO 方法}
+\label{sec:sirppo_method}
+
+针对深度强化学习过程中随机初始化策略网络并直接输出主动悬架力时存在的探索效率低、训练不稳定和安全风险高的问题，
+本文提出基于安全教师门控与动作可行性约束反馈的在线 PPO 方法（SI-RPPO）。
+训练阶段利用 SPDF 安全教师轨迹完成行为克隆初始化，并在 PPO 更新中显式惩罚约束修正量、不安全状态和动作突变；
+部署阶段则由策略网络根据车辆状态与道路预瞄信息直接输出候选主动控制力，再通过安全教师门控和执行器约束修正得到最终控制力。
+需要强调的是，训练示教教师和部署回退教师并不相同：训练阶段使用 SPDF 轨迹提供主动减振先验，部署阶段采用被动悬架零主动力作为安全回退，因此在线部署时不需要同步运行 SPDF 或 MPC 专家控制器。
+
+\subsection{总体框架}
+SI-RPPO 由四个核心环节构成。第一，利用 SPDF 教师轨迹对 PPO actor 进行离线行为克隆预训练，使策略初始化在合理主动控制动作附近。第二，采用车辆状态与道路预瞄序列作为策略输入，通过 Transformer 编码未来路面激励，使 actor 直接输出候选主动悬架力。第三，在执行动作前引入状态相关的安全教师门控：低激励或低安全裕度状态下保持接近被动安全教师，高激励且安全裕度充足时才允许策略输出主动修正力。第四，按照执行器力限幅、动作变化率和安全裕度对门控后的动作进行约束修正，并将约束修正量作为惩罚项加入 PPO 损失，从而在训练过程中显式抑制不可行动作和高频控制力。
+
+设策略网络在观测 $o_t$ 下输出候选主动控制力 $a_t$，安全教师动作为 $u_t^{\mathrm{safe}}$，门控系数为 $g_t\in[0,1]$，则实际施加的控制力为
+\begin{equation}
+u_t=\Pi_{\mathcal U}\Bigl(g_t a_t+(1-g_t)u_t^{\mathrm{safe}}\Bigr),
+\label{eq:sirppo_action}
+\end{equation}
+其中 $\Pi_{\mathcal U}(\cdot)$ 表示执行器力幅值、动作变化率和安全裕度约束组成的动作修正算子。当前部署实现中 $u_t^{\mathrm{safe}}=0$，对应被动悬架零主动控制力；因此当 $g_t\to0$ 时控制器退化为被动安全行为，当 $g_t$ 增大时策略获得主动修正自由度。该结构将在线 PPO 从无约束直接力输出改造成带安全教师回退和动作可行性修正的部署策略类。
+
+\subsection{动作安全屏蔽与执行器约束}
+为抑制高频力指令，当前 SI-RPPO 半车实现不采用增量动作作为主线，而是让 actor 输出候选绝对主动悬架力，并由动作安全屏蔽层统一处理幅值、变化率和安全裕度约束。设门控后的候选动作为 $\tilde u_t=g_ta_t+(1-g_t)u_t^{\mathrm{safe}}$，上一时刻实际执行动作为 $u_{t-1}$，则变化率约束可写为
+\begin{equation}
+u_t^{\mathrm{rate}}=
+\operatorname{clip}\!\left(\tilde u_t,\,
+u_{t-1}-\kappa_{\Delta}u_{\max},\,
+u_{t-1}+\kappa_{\Delta}u_{\max}\right),
+\label{eq:rate_limit}
+\end{equation}
+其中 $\kappa_{\Delta}$ 为单步最大变化率比例，$u_{\max}$ 为执行器力限幅。随后根据悬架动行程、车身姿态和轮胎位移等安全裕度对动作进一步收缩，并限制在执行器可行域内。当前配置中 $\kappa_{\Delta}=0.15$，上一时刻执行力仅由安全屏蔽层内部读取用于变化率限制，默认不作为策略网络观测输入。该设计将策略学习与工程执行约束解耦，使 actor 可以学习主动控制趋势，而最终执行动作始终满足幅值和变化率约束。
+
+\subsection{安全教师改进门控}
+安全教师门控用于判断当前状态是否值得偏离安全教师。门控并不依赖在线专家控制器求解，而是由道路预瞄激励、车身姿态加速度需求和安全裕度共同计算。
+设道路预瞄序列归一化均方根为 $r_t$，道路激励门控的启动阈值为$r_0$，道路激励门控的归一化系数为$s_r>0$，车身垂向和俯仰加速度组成的需求指标为 $d_t$，车身姿态加速度需求的启动阈值为 $d_0$，加速度需求门控的尺度因子为 $s_d$，
+则可分别得到
+\begin{equation}
+h_t^{\mathrm{road}}=\operatorname{clip}\!\left(\frac{r_t-r_0}{s_r},0,1\right),\quad
+h_t^{\mathrm{acc}}=\operatorname{clip}\!\left(\frac{d_t-d_0}{s_d},0,1\right).
+\end{equation}
+安全裕度由悬架行程、车身姿态和轮胎位移等约束的归一化剩余空间取最小值得到；当系统接近硬安全边界时，安全门控因子 $h_t^{\mathrm{safe}}$ 收缩至 0。最终门控系数写为
+\begin{equation}
+g_t=\operatorname{clip}\Bigl(g_{\min}+(g_{\max}-g_{\min})
+\cdot\max(h_t^{\mathrm{road}},h_t^{\mathrm{acc}})h_t^{\mathrm{safe}},\,g_{\min},\,g_{\max}\Bigr).
+\label{eq:gate}
+\end{equation}
+式\eqref{eq:gate}的物理含义是：平顺路面或低激励状态下，策略保持接近被动安全教师，避免无意义主动用力；路面激励较强且安全裕度充足时，门控打开，允许 PPO 利用道路预瞄信息输出主动悬架修正力；接近悬架动行程、姿态或轮胎安全边界时，门控重新收缩，使动作回到保守可行区域\cite{alshiekh2018safe,dalal2018safe,cheng2019end}。
+
+\subsection{离线示教初始化与锚定正则}
+为提升训练初期样本效率，本文利用安全教师轨迹构造离线数据集 $\mathcal D_E=\{(o,u_E)\}$，对策略网络进行行为克隆预训练，使策略初始即接近稳定行为\cite{rajeswaran2018learning,nair2018overcoming,zhang2018pretraining}。预训练后，在 PPO 在线训练阶段引入随回合衰减的锚定正则，约束策略不过快偏离教师先验：
+\begin{equation}
+\lambda_{\mathrm{BC}}(e)=\lambda_0+(\lambda_T-\lambda_0)\cdot\min\!\left(1,\frac{e}{E_{\mathrm{decay}}}\right),
+\label{eq:anchor_decay}
+\end{equation}
+其中 $e$ 为当前回合，$E_{\mathrm{decay}}$ 为衰减回合数，$\lambda_0$、$\lambda_T$ 分别为初始与终值锚定权重。SI-RPPO 的策略损失综合优势项、动作正则、行为克隆锚定与约束惩罚：
+\begin{equation}
+\begin{aligned}
+L_\pi={}&-\mathbb E\bigl(\min(r_t(\theta)\hat A_t,\operatorname{clip}(r_t(\theta),1-\epsilon,1+\epsilon)\hat A_t)\bigr)
++\lambda_u\mathbb E\!\left(\left\|u_t/u_{\max}\right\|_2^2\right)\\
+&+\lambda_{\mathrm{BC}}\mathbb E_{(o,u_E)\sim\mathcal D_E}\!\left(\left\|(\pi_\theta(o)-u_E)/u_{\max}\right\|_2^2\right)
++\lambda_{\mathrm{proj}}\mathbb E(\varrho_t)
++\lambda_{\mathrm{unsafe}}\mathbb E(\mathbb 1_{\mathrm{unsafe}})
++\lambda_{\Delta}\mathbb E(\delta u_t),
+\end{aligned}
+\label{eq:sirppo_loss}
+\end{equation}
+其中 $r_t(\theta)$ 为重要性采样比，$\hat A_t$ 为广义优势估计，$\varrho_t$ 为动作修正前后差值的归一化范数，即约束修正量；$\mathbb 1_{\mathrm{unsafe}}$ 为不安全标志，$\delta u_t$ 为归一化执行动作变化率。当前实现还采用自适应约束权重，根据轨迹中的约束修正量、不安全比例和动作变化率动态调整 $\lambda_{\mathrm{proj}}$、$\lambda_{\mathrm{unsafe}}$ 与 $\lambda_{\Delta}$。SI-RPPO 的完整训练流程如算法~\ref{alg:sirppo} 所示。
+
+\begin{algorithm}[htbp]
+\caption{安全教师门控与动作可行性约束反馈的 PPO（SI-RPPO）}
+\label{alg:sirppo}
+\begin{algorithmic}[1]
+\Require 安全教师策略 $\pi_E$，环境 $\mathcal E$，回合数 $E$，衰减回合 $E_{\mathrm{decay}}$
+\State 采集安全教师轨迹构造离线数据集 $\mathcal D_E=\{(o,u_E)\}$
+\State 行为克隆预训练策略 $\pi_\theta$：$\min_\theta\ \mathbb E_{\mathcal D_E}\|\pi_\theta(o)-u_E\|^2$
+\State 初始化评论家 $V_\phi$，设置锚定样本集 $\mathcal D_E$
+\For{$e=1$ \textbf{to} $E$}
+  \State 计算锚定权重 $\lambda_{\mathrm{BC}}(e)$ \Comment{式\eqref{eq:anchor_decay}}
+  \For{每个控制步 $t$}
+    \State 策略采样候选主动控制力 $a_t\sim\pi_\theta(\cdot|o_t)$
+    \State 由道路预瞄、车身响应和安全裕度计算门控 $g_t$ \Comment{式\eqref{eq:gate}}
+    \State 融合安全教师并修正到可行域 $u_t=\Pi_{\mathcal U}(g_ta_t+(1-g_t)u_t^{\mathrm{safe}})$ \Comment{式\eqref{eq:sirppo_action}}
+    \State 环境推进，记录 $(o_t,a_t,r_t,\varrho_t,\mathbb 1_{\mathrm{unsafe}})$
+  \EndFor
+  \State 计算广义优势 $\hat A_t$ 与回报
+  \State 按式\eqref{eq:sirppo_loss}更新策略 $\pi_\theta$ 与评论家 $V_\phi$
+  \State 在校准场景上评估，若优于历史最优则保存检查点
+\EndFor
+\State \Return 验证得分最优的策略 $\pi_\theta^\star$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{消融实验设计}
+为验证各组件的贡献，本文设计两类变体进行消融对比：（1）\textbf{ppo\_scratch}：标准 PPO，关闭行为克隆初始化、约束修正量惩罚和安全教师门控，作为基准对照；（2）\textbf{bc\_ppo}（SI-RPPO 主线）：启用行为克隆预训练与锚定正则、动作可行性约束反馈、安全教师门控和动作安全屏蔽。
+
+\subsection{仿真平台与训练设置}
+\label{sec:sirppo_sim_setup}
+为避免方法设计与实验验证割裂，本文将仿真平台、基线控制器、路面激励修正和强化学习训练设置统一纳入 SI-RPPO 方法验证部分。该部分首先说明统一仿真框架和控制器接口，随后给出阶段实验与结果分析。
+
+\subsubsection{统一 Python 仿真框架}
+本阶段已完成闭环控制框架的仿真，包括非线性半车模型、ISO 随机路面和凸包路面生成、PID/SPDF/MPC 控制器、Transformer 强化学习控制器、训练脚本、评估脚本和结果可视化脚本。表\ref{tab:main_params}列出了当前实验采用的主要参数。
+\begin{table}[htbp]
+\centering
+\caption{半车主动悬架模型与仿真主要参数}
+\label{tab:main_params}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{>{\centering\arraybackslash}p{0.28\textwidth}>{\centering\arraybackslash}p{0.22\textwidth}>{\centering\arraybackslash}p{0.18\textwidth}>{\centering\arraybackslash}p{0.18\textwidth}}
+\toprule
+参数 & 符号 & 数值 & 单位 \\
+\midrule
+簧载质量 & $m_b$ & 1200 & kg \\
+俯仰转动惯量 & $I_p$ & 600 & kg$\cdot$m$^2$ \\
+前/后非簧载质量 & $m_{wf},m_{wr}$ & 100/100 & kg \\
+前/后悬架线性刚度 & $k_{f1},k_{r1}$ & 15000/15000 & N/m \\
+前/后轮胎刚度 & $k_{f2},k_{r2}$ & 200000/200000 & N/m \\
+拉伸/压缩阻尼 & $b_e,b_c$ & 1500/1200 & N$\cdot$s/m \\
+质心至前/后轴距离 & $a,b$ & 1.2/1.5 & m \\
+执行器力限幅 & $u_{\max}$ & 5000 & N \\
+模型积分步长 & $T_s$ & 0.001 & s \\
+控制周期 & $T_c$ & 0.01 & s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{PID 与 MPC 基线控制器}
+PID 控制器以车身垂向位移和俯仰角为反馈误差，生成广义控制力 $u_b$ 和 $u_{\theta_b}$，再经分配矩阵映射为前后作动器力：
+\begin{equation}
+\begin{pmatrix}u_{af}\\u_{ar}\end{pmatrix}
+=
+\begin{pmatrix}
+\frac{b}{a+b} & \frac{1}{a+b}\\
+\frac{a}{a+b} & -\frac{1}{a+b}
+\end{pmatrix}
+\begin{pmatrix}u_b\\u_{\theta_b}\end{pmatrix}.
+\label{eq:force_split}
+\end{equation}
+PID 控制器结构简单、实时性好，主要用于提供可解释的低复杂度对比基线。MPC 控制器利用式\eqref{eq:preview_seq}的道路预瞄信息，在预测时域 $N$ 内滚动求解带执行器限幅约束的有限时域最优控制问题，其代价函数与式\eqref{eq:cost}一致，在线优化采用 L-BFGS-B 有界优化，控制执行时仅施加当前时刻的第一组控制量。SPDF 方法不再作为普通基线简单列出，而是已在前文作为本课题完成的核心控制方法单独展开。
+
+\subsubsection{路面激励修正与奖励归一化}
+在框架实现与调试过程中，发现并修正了两项影响实验可信度的关键问题，体现了方法实现的严谨性。
+
+其一是随机路面激励的离散化误差。基于 ISO 8608 功率谱密度的随机路面采用一阶随机微分方程描述，其欧拉--丸山离散格式中布朗增量项应为 $\sqrt{\Delta t}$ 量级而非 $\Delta t$ 量级。修正该扩散项系数后，路面不平度均方根由约 \SI{0.62}{mm} 恢复到符合 ISO B 级路面的 \SI{19.6}{mm}，使路面激励强度回到物理合理区间。
+
+其二是多目标奖励的量纲失衡。式\eqref{eq:cost}各项物理量级差异巨大（车身加速度、悬架行程与轮胎载荷相差若干数量级），若直接对原始物理量加权，会导致权重数值失去语义。为此，本文以被动悬架在多场景下各分项统计二阶矩的倒数作为归一化常数，将瞬时代价改写为语义优先级明确的归一化形式
+\begin{equation}
+\ell_t=
+\bar w_1\frac{\ddot z_{b,t}^2}{M_{\ddot z_b}}
++\bar w_2\frac{\ddot\theta_{b,t}^2}{M_{\ddot\theta_b}}
++\bar w_3\frac{\Delta y_{f,t}^2+\Delta y_{r,t}^2}{M_{\Delta y}}
++\bar w_4\frac{(F_{tf,t}+F_{bf,t})^2+(F_{tr,t}+F_{br,t})^2}{M_{F_t}}
++\bar w_5\left\|\frac{u_t}{u_{\max}}\right\|_2^2,
+\label{eq:stage_cost_norm}
+\end{equation}
+其中 $M_{(\cdot)}=\mathbb E\big[(\cdot)^2\big]$ 为对应分项的被动悬架统计二阶矩（均方值）。归一化后各分项在被动悬架下的占比可精准命中预设的语义权重（车身 $0.45$、俯仰 $0.20$、悬架 $0.25$、轮胎 $0.10$），并对单步代价施加上限截断以抑制极端动作对价值函数估计的污染。经此修正，PPO 等在线算法在半车模型上的训练由原先的发散状态恢复为稳定收敛。
+
+\subsubsection{策略网络与基线算法实现}
+强化学习控制器采用统一的道路预瞄编码结构。当前半车实现的观测由 14 维车辆状态特征和 $N_p$ 步前后轮道路预瞄序列组成，默认不将上一时刻执行力并入策略网络观测；上一时刻执行力由动作安全屏蔽层内部读取，用于执行前的变化率限制。基础状态经多层感知机编码，道路预瞄序列经位置编码和 Transformer Encoder 编码，二者拼接后输入 actor 与 critic 网络。本文以 PPO 作为 SI-RPPO 的在线更新基础，并在 PPO 分支上加入离线示教初始化、动作可行性约束反馈、状态相关安全教师门控和动作安全屏蔽。图\ref{fig:sirppo_policy_network}给出了当前 SI-RPPO 策略网络和安全执行链路结构，表\ref{tab:rl_params}列出了强化学习训练与网络的主要参数。
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{sirppo_policy_network.png}
+\caption{SI-RPPO 策略网络与安全执行链路结构}
+\label{fig:sirppo_policy_network}
+\end{figure}
+\begin{table}[htbp]
+\centering
+\caption{强化学习训练与网络参数}
+\label{tab:rl_params}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{>{\centering\arraybackslash}p{0.35\textwidth}>{\centering\arraybackslash}p{0.25\textwidth}>{\centering\arraybackslash}p{0.25\textwidth}}
+\toprule
+参数 & 数值 & 说明 \\
+\midrule
+隐藏层规模 & [256, 256] & actor/critic MLP \\
+actor 学习率 & $5.0\times10^{-5}$ & 默认配置 \\
+critic 学习率 & $1.0\times10^{-3}$ & 默认配置 \\
+折扣因子 & 0.99 & 长期回报权重 \\
+软更新系数 & 0.005 & target network 更新 \\
+batch size & 128 & 经验回放采样 \\
+buffer size & 200000 & 经验池容量 \\
+Transformer 层数 & 2 & 道路预瞄编码器 \\
+注意力头数 & 4 & 多头自注意力 \\
+预瞄嵌入维度 & 64 & preview embedding \\
+道路预瞄长度 & 450 步 & 前后轮路面高程序列 \\
+基础观测维度 & 14 & 不含上一时刻执行力 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{实验结果与分析}
+\label{sec:sirppo_experiment_results}
+
+\subsubsection{全方法横向量化对比}
+为系统评估各类控制方法在半车主动悬架上的综合表现，本节在 7 种典型路面场景（ISO B 级、C 级随机路面、正弦路面、凸包路面、阶跃路面、凹坑路面和复合路面）下对被动悬架（PASSIVE）、PID、SPDF、MPC、PPO scratch 和 SI-RPPO 六种方法进行横向对比。评价指标覆盖乘坐舒适性（车身垂向加速度 RMS、俯仰角加速度 RMS）、安全性（悬架动行程峰值、轮胎动载荷 RMS）、控制能耗（控制力峰值、能耗）和动作平滑性（动作变化率）。
+
+\begin{table}[htbp]
+\centering
+\caption{六种控制方法在 7 种路况下的全指标均值对比}
+\label{tab:allmethods_full}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{3.5pt}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule
+指标 & 被动 & PID & SPDF & MPC & PPO scratch & SI-RPPO \\
+\midrule
+回合回报（均值） & -869 & -6698 & -9104 & -9536 & -762 & \textbf{-578} \\
+车身加速度 RMS (m/s²) & 0.330 & 0.252 & \textbf{0.013} & 0.327 & 0.274 & 0.203 \\
+俯仰加速度 RMS (rad/s²) & 1.276 & 0.778 & \textbf{0.047} & 1.307 & 1.192 & 0.659 \\
+最大前悬架行程 (m) & 0.032 & 0.033 & 0.050 & 0.129 & 0.034 & 0.035 \\
+最大后悬架行程 (m) & 0.034 & 0.033 & 0.052 & 0.115 & \textbf{0.032} & 0.036 \\
+前轮胎动载荷 RMS (N) & 971 & 1154 & 1131 & 995 & \textbf{939} & 973 \\
+后轮胎动载荷 RMS (N) & 1164 & 1225 & 1241 & 1171 & \textbf{1130} & 1166 \\
+控制力峰值 (N) & 0 & 746 & 1683 & 1460 & 345 & 767 \\
+控制能耗 (J) & 0 & 1169 & 3372 & 5560 & 461 & 1585 \\
+不安全步数（总数） & 0 & 0 & 0 & 0 & 0 & 0 \\
+平均门控系数 & --- & --- & --- & --- & --- & 0.353 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+表~\ref{tab:allmethods_full} 展示了各组数据均值。从中可以得出以下结论。
+
+第一，\textbf{SPDF 在车身振动抑制方面具有最优的舒适性表现}。其车身加速度 RMS 为 0.013 m/s²，远低于被动悬架的 0.330 和其他方法，体现出周期滞后滑模控制对车身垂向振动的强抑制能力。代价是控制力峰值（1683 N）和控制能耗（3372 J）较高。
+
+第二，\textbf{PPO scratch 在线学习获得了低能耗的主动控制策略}。在 150 回合训练后，其平均回报（-762）和车身加速度 RMS（0.274）均优于被动悬架，说明标准 PPO 在半车环境中能够学到减振控制规律。由于未引入示教和安全门控，其控制力峰值较低（345 N），但对俯仰和混合路况的抑制能力仍有限。
+
+第三，\textbf{SI-RPPO 在 SPDF 示教和被动安全门控共同作用下取得更好的综合回报与舒适性}。相较 PPO scratch，SI-RPPO 的平均回报由 -762 提升至 -578，车身加速度 RMS 下降约 25.8\%，俯仰加速度 RMS 下降约 44.7\%。其代价是控制力峰值和能耗高于 PPO scratch，说明当前 SI-RPPO 更偏向在安全可行范围内主动用力换取舒适性提升，而不是单纯最小化能耗。
+
+第四，\textbf{MPC 在复杂路况下表现不稳定}。尽管评估中 MPC 与强化学习方法均使用 $450$ 步道路预瞄输入，但受限于有限优化时域和 L-BFGS-B 的求解质量，其平均回报和控制能耗均劣于 PPO 类方法。MPC 权重整定和专家数据质量仍是后续改进方向。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{allmethods_metric_bar.eps}
+    \caption{六种控制方法在典型路况下的车身加速度 RMS 对比}
+    \label{fig:allmethods_metric_bar}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{allmethods_psd.eps}
+    \caption{Class B 随机路面下车身垂向加速度功率谱密度对比}
+    \label{fig:allmethods_psd}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{allmethods_ts_accel.eps}
+    \caption{Class B 随机路面下车身垂向加速度时域响应对比}
+    \label{fig:allmethods_ts_accel}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{allmethods_ts_motion.eps}
+    \caption{Class B 随机路面下车身垂向位移与俯仰角时域响应对比}
+    \label{fig:allmethods_ts_motion}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{comfort_energy_tradeoff.eps}
+    \caption{各控制方法在舒适性与控制能耗之间的折中关系}
+    \label{fig:comfort_energy_tradeoff}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{sirppo_gate_behavior.eps}
+    \caption{SI-RPPO 在不同路况下的安全教师门控系数与动作修正量}
+    \label{fig:sirppo_gate_behavior}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{sirppo_training_curves.eps}
+    \caption{SI-RPPO 与 PPO scratch 的训练阶段评估回报摘要}
+    \label{fig:sirppo_training_curves}
+\end{figure}
+
+\FloatBarrier
+
+\subsubsection{SI-RPPO 消融实验与训练行为}
+SI-RPPO 与 PPO scratch 的消融对比如表~\ref{tab:sirppo_ablation}所示。
+
+\begin{table}[htbp]
+\centering
+\caption{SI-RPPO 与 PPO scratch 消融对比}
+\label{tab:sirppo_ablation}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{>{\centering\arraybackslash}p{0.32\textwidth}>{\centering\arraybackslash}p{0.18\textwidth}>{\centering\arraybackslash}p{0.18\textwidth}>{\centering\arraybackslash}p{0.18\textwidth}}
+\toprule
+指标 & PPO scratch & SI-RPPO & 改善方向 \\
+\midrule
+最终评估回报 & -761.55 & \textbf{-577.97} & 提升 \\
+车身加速度 RMS (m/s²) & 0.274 & \textbf{0.203} & 降低 \\
+俯仰加速度 RMS (rad/s²) & 1.192 & \textbf{0.659} & 降低 \\
+控制力峰值 (N) & \textbf{345} & 767 & 主动用力增加 \\
+控制能耗 (J) & \textbf{461} & 1585 & 能耗--舒适性折中 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+第一，\textbf{示教初始化和安全门控提升了策略的舒适性收益}。SI-RPPO 在统一评估中取得更高平均回报，并显著降低车身和俯仰加速度 RMS，说明 SPDF 安全教师轨迹为策略提供了有效的主动减振先验。
+
+第二，\textbf{离线示教初始化改善训练起点}。ppo\_scratch 需从随机策略在线探索，而 SI-RPPO 经 SPDF 轨迹行为克隆预训练后，预训练模型全场景均值回报约为 $-941$，随后 PPO 微调得到 $-578$ 的最终评估回报。
+
+第三，\textbf{安全教师门控实现状态相关的主动控制}。最终部署中门控上限设置为 $0.5$，平均门控系数约为 $0.353$；低激励路况下策略接近被动安全教师，高激励路况下允许部分主动控制力介入，从而在能耗和舒适性之间取得折中。
+
+
+
+\section{目前存在的或预期可能出现的问题}
+当前研究仍存在四类问题。
+第一，SPDF 已在标称半车模型和典型路面下取得较好效果，但其性能依赖较准确的动力学模型、参数上界和执行器建模，面对强参数失配或真实感知误差时会导致控制系统不稳定。
+第二，MPC 的舒适性权重尚未充分整定，作为结构化预瞄基线和专家数据来源仍需通过归一化权重和多目标搜索进一步提升。
+第三，SI-RPPO 在半车实验中已相较 PPO scratch 提升最终评估回报和舒适性指标，但该提升依赖更高的主动控制能量。后续仍需围绕能耗--舒适性权衡、门控上限和示教强度开展更系统的多目标整定。
+第四，当前仿真主要采用解析路面模型生成理想预瞄序列，尚未系统评估上游感知模块带来的幅值噪声、时延偏差、空间采样误差和局部缺失对控制性能的影响，硬件在环和实时性验证仍处于准备阶段。
+
+\section{后期学术研究或者实践工作的进度安排}
+基于上述问题，后续研究计划如表~\ref{tab:schedule}所示。
+\vspace{-0.4em}
+\begin{table}[H]
+\centering
+\caption{后续研究计划}
+\label{tab:schedule}
+
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{>{\centering\arraybackslash}p{0.22\textwidth}p{0.68\textwidth}}
+\toprule
+时间 & 主要任务 \\
+\midrule
+2026 年 6 月至 8 月 & 补充 SPDF 参数鲁棒性与能耗--收敛权衡实验，完成 MPC 权重整定与专家数据采集，并以 SPDF 为强先验优化 SI-RPPO，补充消融与横向对比实验。 \\
+2026 年 8 月至 10 月 & 构建非理想道路预瞄信息模型，分析预瞄噪声、时延、截断和缺失对控制性能的影响。 \\
+2026 年 10 月至 12 月 & 完成硬件在环或实车条件准备，开展实时性和安全性验证。 \\
+2026 年 12 月至 2027 年 1 月 & 汇总实验结果，撰写学位论文与相关学术论文。 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\vspace{-0.6em}
+
+\clearpage
+\section{主要参考文献}
+\bibliographystyle{hithesis}
+\bibliography{reference}
+
+% Local Variables:
+% TeX-master: "../report"
+% TeX-engine: xetex
+% End:

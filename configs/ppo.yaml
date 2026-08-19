@@ -1,0 +1,25 @@
+# Standard PPO baseline. All SI-RPPO-specific imitation, gate, and safety
+# correction modules are disabled; the policy directly outputs active forces.
+inherits: half_car_safe_ppo.yaml
+
+imitation:
+  enabled: false
+
+policy_action_parameterization:
+  enabled: false
+
+policy_improvement_gate:
+  enabled: false
+
+policy_safety:
+  enabled: false
+
+action_in_observation: false
+
+rl:
+  obs_dim_base: 14
+  ppo:
+    projection_penalty_weight: 0.0
+    unsafe_penalty_weight: 0.0
+    action_delta_penalty_weight: 0.0
+    adaptive_constraint_weights: false

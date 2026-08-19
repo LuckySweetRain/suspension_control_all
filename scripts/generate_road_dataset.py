@@ -18,10 +18,10 @@ from roads.road_profiles import RoadProfileFactory
 
 DEFAULT_DATASET_SCENARIOS = [
     {"name": "iso_b_22ms", "label": "ISO B 22 m/s", "type": "iso", "level": "B", "speed": 22.2222222222, "seed": 101},
-    {"name": "iso_c_12ms", "label": "ISO C 12 m/s", "type": "iso", "level": "C", "speed": 12.0, "seed": 202},
+    {"name": "iso_c_8ms", "label": "ISO C 8.33 m/s", "type": "iso", "level": "C", "speed": 8.3333333333, "seed": 202},
     {"name": "sine_long_18ms", "label": "Long Sine 18 m/s", "type": "sine", "speed": 18.0, "amplitude": 0.025, "wavelength": 5.0},
-    {"name": "bump_22ms", "label": "Bump 22 m/s", "type": "bump", "speed": 22.2222222222, "height": 0.08, "length": 0.35, "start_time": 0.8},
-    {"name": "pothole_16ms", "label": "Pothole 16 m/s", "type": "pothole", "speed": 16.0, "depth": 0.06, "length": 0.55, "start_time": 0.9},
+    {"name": "bump_22ms", "label": "Bump 22 m/s", "type": "bump", "speed": 22.2222222222, "height": 0.1, "length": 0.25, "start_time": 0.6},
+    {"name": "pothole_16ms", "label": "Pothole 16 m/s", "type": "pothole", "speed": 16.0, "depth": 0.06, "length": 0.5, "start_time": 0.9},
     {
         "name": "mixed_18ms",
         "label": "Mixed 18 m/s",
@@ -29,8 +29,8 @@ DEFAULT_DATASET_SCENARIOS = [
         "speed": 18.0,
         "components": [
             {"type": "iso", "level": "B", "seed": 3021},
-            {"type": "sine", "amplitude": 0.01, "wavelength": 3.5},
-            {"type": "bump", "height": 0.04, "length": 0.45, "start_time": 1.6},
+            {"type": "sine", "amplitude": 0.012, "wavelength": 3.5},
+            {"type": "pothole", "depth": 0.04, "length": 0.45, "start_time": 1.5},
         ],
     },
 ]
@@ -77,11 +77,11 @@ def generate_dataset(
         json.dump(manifest, f, indent=2)
 
     if base_config is None:
-        base_config = ROOT / "configs" / "mujoco_full_car_corner.yaml"
+        base_config = ROOT / "configs" / "default.yaml"
     config = load_config(base_config)
     config["scenarios"] = scenarios
     config.setdefault("evaluation", {})["controllers"] = ["PASSIVE"]
-    config_path = out_dir / "mujoco_full_car_dataset.yaml"
+    config_path = out_dir / "road_dataset.yaml"
     with config_path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False, allow_unicode=True)
     manifest["config"] = str(config_path)
