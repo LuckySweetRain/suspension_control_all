@@ -8,6 +8,7 @@ Style rules from SPDF paper (IJRNC):
   - PSD: loglog scale
   - Output: PDF vector
 """
+
 from __future__ import annotations
 
 import json
@@ -15,9 +16,9 @@ import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from scipy import signal
@@ -26,22 +27,25 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from config import apply_algorithm_overrides, load_config
-from experiments.evaluation import rollout, make_controller, make_env
+from experiments.evaluation import make_controller, make_env, rollout
+from visualization.spectra import sampling_frequency
 
 # === IEEE style settings ===
-plt.rcParams.update({
-    "font.family": "serif",
-    "font.serif": ["Times New Roman", "DejaVu Serif"],
-    "font.size": 8,
-    "axes.titlesize": 8,
-    "axes.labelsize": 8,
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
-    "legend.fontsize": 6,
-    "lines.linewidth": 0.5,
-    "grid.alpha": 0.3,
-    "text.usetex": False,  # set True if LaTeX is available
-})
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "DejaVu Serif"],
+        "font.size": 8,
+        "axes.titlesize": 8,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 6,
+        "lines.linewidth": 0.5,
+        "grid.alpha": 0.3,
+        "text.usetex": False,  # set True if LaTeX is available
+    }
+)
 # Color/line convention matching SPDF paper:
 # Passive=blue solid, PID=black dash-dot, SPDF=red dash-dot
 STYLES = {
@@ -79,8 +83,7 @@ def ieee_save(fig, name):
 def plot_with_style(ax, data, key, label):
     """Plot with SPDF paper line conventions."""
     s = STYLES.get(label, {"color": "k", "linestyle": "-"})
-    ax.plot(data, color=s["color"], linestyle=s["linestyle"],
-            linewidth=0.5, label=label)
+    ax.plot(data, color=s["color"], linestyle=s["linestyle"], linewidth=0.5, label=label)
 
 
 # ===== 1. PSD: Body Acc - Class B (matching PLOT_rank_PSD_SPDF_PID.m) =====
@@ -101,29 +104,47 @@ for ctrl_name in ["PASSIVE", "PID", "SPDF"]:
 # PPO_scratch
 scratch_cfg = apply_algorithm_overrides(load_config("configs/ppo_scratch.yaml"), "ppo")
 env = make_env(scratch_cfg, scenario=scenario, use_preview=True)
-run = rollout(env, make_controller("PPO", env, scratch_cfg,
-              checkpoint="results/20260621_191152_ppo/checkpoints/best.pt", algorithm="ppo"), use_preview=True)
+run = rollout(
+    env,
+    make_controller(
+        "PPO",
+        env,
+        scratch_cfg,
+        checkpoint="results/20260621_191152_ppo/checkpoints/best.pt",
+        algorithm="ppo",
+    ),
+    use_preview=True,
+)
 all_runs["PPO_scratch"] = run
 env.close()
 
 # SI-RPPO
 env = make_env(config, scenario=scenario, use_preview=True)
-run = rollout(env, make_controller("PPO", env, config,
-              checkpoint="results/20260621_182309_ppo/checkpoints/best.pt", algorithm="ppo"), use_preview=True)
+run = rollout(
+    env,
+    make_controller(
+        "PPO",
+        env,
+        config,
+        checkpoint="results/20260621_182309_ppo/checkpoints/best.pt",
+        algorithm="ppo",
+    ),
+    use_preview=True,
+)
 all_runs["SI-RPPO"] = run
 env.close()
 
 # PSD: 2x2 subplot (body acc Class B/C, pitch acc Class B/C) like SPDF paper
 fig = plt.figure(figsize=(3.5, 2.8))
-gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.4,
-                       left=0.14, right=0.96, bottom=0.14, top=0.92)
-fs = 1.0 / 0.001
+gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.4, left=0.14, right=0.96, bottom=0.14, top=0.92)
 
 scenario_b = config["scenarios"][0]
 scenario_c = config["scenarios"][1]
 
-for idx, (sc, sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "ClassC")]):
-    for j, (signal_name, ylabel) in enumerate([("ddzb", r"$\ddot{z}_b$"), ("ddtheta", r"$\ddot{\theta}_b$")]):
+for idx, (sc, _sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "ClassC")]):
+    for j, (signal_name, ylabel) in enumerate(
+        [("ddzb", r"$\ddot{z}_b$"), ("ddtheta", r"$\ddot{\theta}_b$")]
+    ):
         ax = fig.add_subplot(gs[j, idx])
         for ctrl_name in ["PASSIVE", "PID", "SPDF"]:
             env_c = make_env(config, scenario=sc, use_preview=(ctrl_name == "MPC"))
@@ -131,24 +152,41 @@ for idx, (sc, sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "Clas
             run_c = rollout(env_c, ctrl_c, use_preview=(ctrl_name == "MPC"))
             data = run_c["data"]
             steady = data[data["time"] >= 1.0]
-            f, Pxx = signal.welch(steady[signal_name].values, fs=fs,
-                                  nperseg=min(2048, len(steady)//4))
+            f, Pxx = signal.welch(
+                steady[signal_name].values,
+                fs=sampling_frequency(steady["time"].to_numpy()),
+                nperseg=min(2048, len(steady) // 4),
+            )
             s = STYLES[ctrl_name]
-            ax.loglog(f, Pxx, color=s["color"], linestyle=s["linestyle"],
-                      linewidth=0.5, label=ctrl_name)
+            ax.loglog(
+                f, Pxx, color=s["color"], linestyle=s["linestyle"], linewidth=0.5, label=ctrl_name
+            )
             env_c.close()
 
         # Also plot SI-RPPO
         env_c = make_env(config, scenario=sc, use_preview=True)
-        run_c = rollout(env_c, make_controller("PPO", env_c, config,
-                       checkpoint="results/20260621_182309_ppo/checkpoints/best.pt", algorithm="ppo"), use_preview=True)
+        run_c = rollout(
+            env_c,
+            make_controller(
+                "PPO",
+                env_c,
+                config,
+                checkpoint="results/20260621_182309_ppo/checkpoints/best.pt",
+                algorithm="ppo",
+            ),
+            use_preview=True,
+        )
         data = run_c["data"]
         steady = data[data["time"] >= 1.0]
-        f, Pxx = signal.welch(steady[signal_name].values, fs=fs,
-                              nperseg=min(2048, len(steady)//4))
+        f, Pxx = signal.welch(
+            steady[signal_name].values,
+            fs=sampling_frequency(steady["time"].to_numpy()),
+            nperseg=min(2048, len(steady) // 4),
+        )
         s = STYLES["SI-RPPO"]
-        ax.loglog(f, Pxx, color=s["color"], linestyle=s["linestyle"],
-                  linewidth=0.5, label="SI-RPPO")
+        ax.loglog(
+            f, Pxx, color=s["color"], linestyle=s["linestyle"], linewidth=0.5, label="SI-RPPO"
+        )
         env_c.close()
 
         ax.set_xlim(1e-1, 30)
@@ -160,8 +198,7 @@ for idx, (sc, sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "Clas
             ax.legend(fontsize=5, loc="lower left")
 
 # Global xlabel
-fig.text(0.5, 0.01, "Frequency (Hz)", ha="center", fontsize=8,
-         fontname="Times New Roman")
+fig.text(0.5, 0.01, "Frequency (Hz)", ha="center", fontsize=8, fontname="Times New Roman")
 ieee_save(fig, "allmethods_psd.eps")
 print("  PSD done")
 
@@ -170,12 +207,15 @@ print("  PSD done")
 print("2. Time-domain plots...")
 # 2x2: body acc class B/C, pitch acc class B/C
 fig = plt.figure(figsize=(3.5, 2.8))
-gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.4,
-                       left=0.14, right=0.96, bottom=0.14, top=0.92)
+gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.4, left=0.14, right=0.96, bottom=0.14, top=0.92)
 
-for idx, (sc, sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "ClassC")]):
-    for j, (signal_name, ylabel) in enumerate([("ddzb", r"$\ddot{z}_b\ (\mathrm{m/s^2})$"),
-                                                ("ddtheta", r"$\ddot{\theta}_b\ (\mathrm{rad/s^2})$")]):
+for idx, (sc, _sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "ClassC")]):
+    for j, (signal_name, ylabel) in enumerate(
+        [
+            ("ddzb", r"$\ddot{z}_b\ (\mathrm{m/s^2})$"),
+            ("ddtheta", r"$\ddot{\theta}_b\ (\mathrm{rad/s^2})$"),
+        ]
+    ):
         ax = fig.add_subplot(gs[j, idx])
         for ctrl_name in ["PASSIVE", "PID", "SPDF"]:
             env_c = make_env(config, scenario=sc, use_preview=(ctrl_name == "MPC"))
@@ -184,18 +224,39 @@ for idx, (sc, sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "Clas
             data = run_c["data"]
             mask = (data["time"] >= 1.0) & (data["time"] <= 4.0)
             s = STYLES[ctrl_name]
-            ax.plot(data["time"].values[mask], data[signal_name].values[mask],
-                    color=s["color"], linestyle=s["linestyle"], linewidth=0.5, label=ctrl_name)
+            ax.plot(
+                data["time"].values[mask],
+                data[signal_name].values[mask],
+                color=s["color"],
+                linestyle=s["linestyle"],
+                linewidth=0.5,
+                label=ctrl_name,
+            )
             env_c.close()
         # SI-RPPO
         env_c = make_env(config, scenario=sc, use_preview=True)
-        run_c = rollout(env_c, make_controller("PPO", env_c, config,
-                       checkpoint="results/20260621_182309_ppo/checkpoints/best.pt", algorithm="ppo"), use_preview=True)
+        run_c = rollout(
+            env_c,
+            make_controller(
+                "PPO",
+                env_c,
+                config,
+                checkpoint="results/20260621_182309_ppo/checkpoints/best.pt",
+                algorithm="ppo",
+            ),
+            use_preview=True,
+        )
         data = run_c["data"]
         mask = (data["time"] >= 1.0) & (data["time"] <= 4.0)
         s = STYLES["SI-RPPO"]
-        ax.plot(data["time"].values[mask], data[signal_name].values[mask],
-                color=s["color"], linestyle=s["linestyle"], linewidth=0.5, label="SI-RPPO")
+        ax.plot(
+            data["time"].values[mask],
+            data[signal_name].values[mask],
+            color=s["color"],
+            linestyle=s["linestyle"],
+            linewidth=0.5,
+            label="SI-RPPO",
+        )
         env_c.close()
 
         ax.set_ylabel(ylabel, fontsize=7)
@@ -204,8 +265,7 @@ for idx, (sc, sc_label) in enumerate([(scenario_b, "ClassB"), (scenario_c, "Clas
         if idx == 0 and j == 0:
             ax.legend(fontsize=5, loc="upper right")
 
-fig.text(0.5, 0.01, "Time (s)", ha="center", fontsize=8,
-         fontname="Times New Roman")
+fig.text(0.5, 0.01, "Time (s)", ha="center", fontsize=8, fontname="Times New Roman")
 ieee_save(fig, "allmethods_ts_accel.eps")
 print("  Time-domain done")
 
@@ -215,14 +275,17 @@ print("3. Bump response...")
 # Find the bump scenario
 bump_sc = [s for s in config["scenarios"] if s["name"] == "bump"][0]
 fig = plt.figure(figsize=(3.5, 1.8))
-gs = fig.add_gridspec(1, 2, hspace=0.3, wspace=0.4,
-                       left=0.14, right=0.96, bottom=0.22, top=0.90)
+gs = fig.add_gridspec(1, 2, hspace=0.3, wspace=0.4, left=0.14, right=0.96, bottom=0.22, top=0.90)
 
 # Use SPDF code to collect data
 from controllers import SPDFController as SPDFCtrl
 
-for j, (signal_name, ylabel) in enumerate([("ddzb", r"$\ddot{z}_b\ (\mathrm{m/s^2})$"),
-                                            ("ddtheta", r"$\ddot{\theta}_b\ (\mathrm{rad/s^2})$")]):
+for j, (signal_name, ylabel) in enumerate(
+    [
+        ("ddzb", r"$\ddot{z}_b\ (\mathrm{m/s^2})$"),
+        ("ddtheta", r"$\ddot{\theta}_b\ (\mathrm{rad/s^2})$"),
+    ]
+):
     ax = fig.add_subplot(gs[0, j])
     for ctrl_name in ["PASSIVE", "SPDF"]:
         env_c = make_env(config, scenario=bump_sc, use_preview=False)
@@ -234,18 +297,39 @@ for j, (signal_name, ylabel) in enumerate([("ddzb", r"$\ddot{z}_b\ (\mathrm{m/s^
         data = run_c["data"]
         mask = data["time"] >= 0.5
         s = STYLES[ctrl_name]
-        ax.plot(data["time"].values[mask], data[signal_name].values[mask],
-                color=s["color"], linestyle=s["linestyle"], linewidth=0.5, label=ctrl_name)
+        ax.plot(
+            data["time"].values[mask],
+            data[signal_name].values[mask],
+            color=s["color"],
+            linestyle=s["linestyle"],
+            linewidth=0.5,
+            label=ctrl_name,
+        )
         env_c.close()
     # SI-RPPO
     env_c = make_env(config, scenario=bump_sc, use_preview=True)
-    run_c = rollout(env_c, make_controller("PPO", env_c, config,
-                   checkpoint="results/20260621_182309_ppo/checkpoints/best.pt", algorithm="ppo"), use_preview=True)
+    run_c = rollout(
+        env_c,
+        make_controller(
+            "PPO",
+            env_c,
+            config,
+            checkpoint="results/20260621_182309_ppo/checkpoints/best.pt",
+            algorithm="ppo",
+        ),
+        use_preview=True,
+    )
     data = run_c["data"]
     mask = data["time"] >= 0.5
     s = STYLES["SI-RPPO"]
-    ax.plot(data["time"].values[mask], data[signal_name].values[mask],
-            color=s["color"], linestyle=s["linestyle"], linewidth=0.5, label="SI-RPPO")
+    ax.plot(
+        data["time"].values[mask],
+        data[signal_name].values[mask],
+        color=s["color"],
+        linestyle=s["linestyle"],
+        linewidth=0.5,
+        label="SI-RPPO",
+    )
     env_c.close()
 
     ax.set_ylabel(ylabel, fontsize=7)
@@ -255,8 +339,7 @@ for j, (signal_name, ylabel) in enumerate([("ddzb", r"$\ddot{z}_b\ (\mathrm{m/s^
     if j == 0:
         ax.legend(fontsize=5, loc="upper right")
 
-fig.text(0.5, 0.03, "Time (s)", ha="center", fontsize=8,
-         fontname="Times New Roman")
+fig.text(0.5, 0.03, "Time (s)", ha="center", fontsize=8, fontname="Times New Roman")
 ieee_save(fig, "bump_response.eps")
 print("  Bump response done")
 
@@ -267,15 +350,24 @@ fig = plt.figure(figsize=(3.5, 2.2))
 ax = fig.subplots()
 fig.subplots_adjust(left=0.16, right=0.97, bottom=0.22, top=0.88)
 
-mean_df = df.groupby("Controller").agg({"BodyAccRMS_mps2": "mean",
-                                         "ControlAbsEnergy_J": "mean"}).reset_index()
+mean_df = (
+    df.groupby("Controller")
+    .agg({"BodyAccRMS_mps2": "mean", "ControlAbsEnergy_J": "mean"})
+    .reset_index()
+)
 ctrl_order = [c for c in ORDER if c in mean_df["Controller"].values]
 x = np.arange(len(ctrl_order))
 width = 0.6
 
 colors_bar = [STYLES[c]["color"] for c in ctrl_order]
-ax.bar(x, [mean_df[mean_df["Controller"]==c]["BodyAccRMS_mps2"].values[0] for c in ctrl_order],
-       width, color=colors_bar, edgecolor="k", linewidth=0.3)
+ax.bar(
+    x,
+    [mean_df[mean_df["Controller"] == c]["BodyAccRMS_mps2"].values[0] for c in ctrl_order],
+    width,
+    color=colors_bar,
+    edgecolor="k",
+    linewidth=0.3,
+)
 ax.set_xticks(x)
 ax.set_xticklabels(ctrl_order, fontsize=6, rotation=30)
 ax.set_ylabel("Body Acc RMS (m/s$^2$)", fontsize=7)
@@ -292,8 +384,7 @@ with open(ROOT / "results/20260621_182309_ppo/eval_history.json") as f:
     eval_history = json.load(f)
 
 fig = plt.figure(figsize=(3.5, 3.5))
-gs_train = fig.add_gridspec(3, 1, hspace=0.40, left=0.16, right=0.96,
-                             bottom=0.10, top=0.95)
+gs_train = fig.add_gridspec(3, 1, hspace=0.40, left=0.16, right=0.96, bottom=0.10, top=0.95)
 eps_list = [h["episode"] for h in history]
 gates = [h.get("mean_improvement_gate", 0) for h in history]
 act_deltas = [h.get("mean_action_delta", 0) for h in history]
@@ -310,8 +401,7 @@ ax1.grid(True, alpha=0.3)
 ax1.legend(fontsize=5)
 ax1.tick_params(labelsize=6)
 # Annotate convergence
-ax1.annotate("Converged", xy=(100, -900), fontsize=5, color="gray",
-             fontstyle="italic")
+ax1.annotate("Converged", xy=(100, -900), fontsize=5, color="gray", fontstyle="italic")
 
 # Middle: gate
 ax2 = fig.add_subplot(gs_train[1])
@@ -338,8 +428,7 @@ sirppo_data = all_runs["SI-RPPO"]["data"]
 mask_gate = (sirppo_data["time"] >= 1.0) & (sirppo_data["time"] <= 6.0)
 
 fig = plt.figure(figsize=(3.5, 2.5))
-gs_gate = fig.add_gridspec(3, 1, hspace=0.3, left=0.16, right=0.96,
-                            bottom=0.10, top=0.95)
+gs_gate = fig.add_gridspec(3, 1, hspace=0.3, left=0.16, right=0.96, bottom=0.10, top=0.95)
 tt = sirppo_data["time"].values[mask_gate]
 
 ax1 = fig.add_subplot(gs_gate[0])
@@ -377,10 +466,24 @@ with open(ROOT / "results/20260621_191152_ppo/eval_history.json") as f:
 fig, ax = plt.subplots(figsize=(3.5, 2.0))
 fig.subplots_adjust(left=0.16, right=0.97, bottom=0.18, top=0.90)
 
-ax.plot([e["episode"] for e in eval_history], [e["mean_return"] for e in eval_history],
-        "b-", linewidth=0.7, marker=".", markersize=2, label="SI-RPPO")
-ax.plot([e["episode"] for e in scratch_eval], [e["mean_return"] for e in scratch_eval],
-        "r--", linewidth=0.7, marker="x", markersize=2, label="PPO Scratch")
+ax.plot(
+    [e["episode"] for e in eval_history],
+    [e["mean_return"] for e in eval_history],
+    "b-",
+    linewidth=0.7,
+    marker=".",
+    markersize=2,
+    label="SI-RPPO",
+)
+ax.plot(
+    [e["episode"] for e in scratch_eval],
+    [e["mean_return"] for e in scratch_eval],
+    "r--",
+    linewidth=0.7,
+    marker="x",
+    markersize=2,
+    label="PPO Scratch",
+)
 ax.axhline(y=-869, color="gray", linestyle=":", linewidth=0.4, label="PASSIVE")
 ax.set_xlabel("Episode", fontsize=7)
 ax.set_ylabel("Eval Mean Return", fontsize=7)

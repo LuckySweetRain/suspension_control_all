@@ -1,59 +1,66 @@
-# AGENTS.md
+# 仓库协作指南
 
-This file provides guidance to the AI agent when working with code in this repository.
+## 项目结构
 
-## 项目概述
+本项目基于半车模型开展主动悬架控制研究，各目录职责如下：
 
-纯 Python 半车主动悬架控制研究项目。包含 RL 基线（DDPG/TD3/SAC/PPO）、经典控制器（PID/SPDF）、预览 MPC，以及一个独立的 MATLAB/CarSim 联合仿真子项目。
+- `models/`：车辆动力学模型；`envs/`：Gymnasium 环境；`roads/`：路面生成与导入。
+- `controllers/`：PID、SPDF、MPC 控制器及策略适配器。
+- `rl/`：DDPG、TD3、SAC、PPO 算法、神经网络和经验回放。
+- `experiments/`：公共评估逻辑；`scripts/`：命令行入口。
+- `configs/`：实验配置；`visualization/`：绘图代码；`docs/`：研究记录。
 
-## 运行命令
+## 开发命令
 
-所有脚本从仓库根目录直接运行，无 `pip install -e .`，无 Makefile：
+所有命令均从仓库根目录运行，脚本会自行配置模块导入路径。
 
-- 训练 RL：`python scripts/train_rl.py --algorithm sac --config configs/train_fast.yaml`
-- 评估全部控制器：`python scripts/evaluate_all.py --config configs/default.yaml`
-- `evaluate_all.py --checkpoints` 用逗号分隔的 `算法=路径`，支持字面量 `latest`（按 mtime 解析最新 `final.pt`）
+- 创建 Conda 环境：`conda env create -f environment.yml`。
+- 激活环境：`conda activate suspension-control`。
+- 训练：`python scripts/train_rl.py --algorithm sac --config configs/train_fast.yaml`。
+- 评估：`python scripts/evaluate_all.py --config configs/default.yaml`。
+- 配置校验：`python scripts/validate_training_config.py --config configs/default.yaml`。
+- 环境冒烟检查：`python scripts/check_gym_registration.py --config configs/default.yaml --smoke`。
+- 静态检查：`python -m ruff check .`；代码格式化：`python -m ruff format .`。
 
-脚本自行把仓库根注入 `sys.path`，所以 `from config import ...`、`from controllers import ...` 只在根目录为 CWD 时可用。
+评估支持 `--checkpoints sac=latest,ppo=path/to/final.pt`；`latest` 按修改时间选择
+匹配算法的最新 `final.pt` 权重文件。
 
-## 配置系统
+## 代码风格
 
-`config.py` 实现自定义 `inherits:` 链：YAML 顶部写 `inherits: default.yaml`，`load_config()` 递归深合并、子配置覆盖父配置。**修改 `configs/default.yaml` 会静默影响所有继承它的子配置**（half_car_bp_nmps.yaml、half_car_safe_ppo.yaml、ppo.yaml 等）。改基线前先 `grep -r "inherits" configs/` 看影响范围。
+保持 Python 3.10 兼容性，使用 4 空格缩进、双引号和
+`from __future__ import annotations`。函数与模块采用 `snake_case`，类采用
+`PascalCase`。Ruff 执行 E/F/I/B/UP 规则，格式化行宽为 100 字符。
+明确标注物理单位、观测维度和策略动作变换。
 
-## 依赖注意事项
-
-- `scipy` 已在 requirements.txt 中（MPC 和图脚本需要）。
-- `torch` 自动选 CUDA（`cuda if available else cpu`），无环境变量强制 CPU；需 CPU 时编程传入 `device=`。
-- `datasets/expert/half_car_spdf.npz` 和训练 checkpoint（`*.pt`）被 gitignore——新克隆缺 BC 预训练数据，需先用 `scripts/collect_expert_dataset.py` 重新生成才能跑 SI-RPPO 的 BC 预训练。
+使用 Conda 管理环境；运行依赖维护在 `requirements.txt`，开发工具维护在
+`requirements-dev.txt`，由 `environment.yml` 引入。
 
 ## 测试与验证
 
-本仓库**没有 pytest 测试套件**（README 说明已移除）。不要声称或运行 `pytest`。最接近的验证手段：
-- `ruff check`（lint，配置见 `pyproject.toml`：E/F/I/B/UP，忽略 E501/E741，行长 100，目标 py310）
-- `ruff format`（格式化，同样读取 `pyproject.toml` 的 `line-length=100`）
-- `python scripts/validate_training_config.py --config <cfg> --out results/validate.json`
-- `python scripts/check_gym_registration.py --config <cfg> --smoke`
+本仓库没有 pytest 测试套件或覆盖率门槛，不要运行 pytest，也不要声称通过了 pytest。
+修改后运行 Ruff 及相关校验、冒烟检查脚本。修改控制器或训练代码时，运行
+`python scripts/check_project.py`，检查观测、动作、奖励是否为有限值，以及训练与评估
+是否一致。汇报实际执行的命令和验证局限；短时检查不能证明训练收敛或控制性能提升。
 
-`.qoder/settings.json` 配置了 PostToolUse 钩子：每次 Write/Edit 后自动对 .py 文件运行 `ruff check --quiet`，语法错误和 lint 问题会立即反馈给 AI。
+## 配置与数据
 
-代码风格跟随文件现状：4 空格缩进、双引号、`from __future__ import annotations`。ruff 的 I 规则（导入排序）可能触发对现有文件的重新排序，AI 可按需 `ruff check --fix` 或保留原样。无 CI。
+`config.py` 根据 YAML 的 `inherits:` 递归合并配置。修改 `default.yaml` 前，先运行
+`rg "inherits:" configs` 检查影响范围，优先在独立实验配置中覆盖参数。
+保留可复现的随机种子，避免无说明地改变研究基线。
 
-## 子项目边界
+路面文件的相对路径基于仓库工作目录解析。缺少模仿学习数据时，使用
+`scripts/collect_expert_dataset.py` 生成；数据集和模型权重属于本地工件。
+使用历史记录中的路径前，先确认文件仍然存在。
 
-- `carsim_mpc_quick/` 是独立 MATLAB+CarSim 子项目，需 MATLAB、Simulink `.slx`、以及绝对路径 `E:\Desktop\workspace\CarSim_database\carsim_active_suspension` 的 CarSim 数据库。不从 Python 运行。
-- `projects/` 和 `tools/create_metric_formula_slide.ps1` 是论文答辩 PPT 生成工件，非 Python 源码。
+## 子项目边界与 Git 约定
 
-## 仓库根临时文件
+`carsim_mpc_quick/` 是独立的 MATLAB/Simulink/CarSim 项目，依赖外部数据库。
+`projects/` 保存答辩源稿、素材和最终成果；`tools/` 保存文档辅助脚本。
+文件用途见 `docs/file_inventory.md`。整理时保留论文源稿、数据集、实验结果和权重；
+重复文件须核对内容与引用，可再生成的预览、编译缓存与提取中间文件不纳入版本管理。
+未经明确授权，不得读取、修改或删除 `tmp/`、`tmp_*`、`.conda_envs/`、`.conda_pkgs/`。
+生成结果统一放在 `results/` 或 `datasets/`。
 
-`tmp/`、`tmp_*.pptx`、`.conda_envs/`、`.conda_pkgs/`、`tmp_docx_qa/`、`tmp_ppt_check/` 等是本地工件，**禁止读取、修改或删除**，除非用户明确要求。
-
-## Git 约定
-
-- 分支为 `master`（非 `main`）。
-- 直接提交到 master，不使用 PR。
-- commit message 用中文（参考现有："修复...", "半车..."）。
-- 不要信任文档中引用的已删除配置（`docs/model_parameter_audit.md` 和 README 提到 `configs/mujoco_full_car_*.yaml` 等已删除的路径）。
-
----
-
-如需私人、不提交的本地偏好，可创建 `AGENTS.local.md`（gitignore，优先级高于本文件）。模块特定指令可在子目录放 `AGENTS.md`，在工作于该目录时自动加载。
+使用 `master` 分支，直接提交，不使用拉取请求（PR）。提交信息使用中文，例如
+`修复配置校验路径`。保持改动便于审查，保留与当前任务无关的工作。
+工作前读取适用的子目录 `AGENTS.md` 和本地 `AGENTS.local.md` 指令。

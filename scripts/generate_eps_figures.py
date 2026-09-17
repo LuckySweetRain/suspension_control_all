@@ -1,4 +1,5 @@
 """Generate Chapter 6 EPS figures with the same style as Chapter 5 MATLAB plots."""
+
 from __future__ import annotations
 
 import copy
@@ -9,7 +10,6 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -18,8 +18,6 @@ from scipy import signal
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from config import apply_algorithm_overrides, load_config
-from experiments.evaluation import make_controller, make_env, rollout
 from ijrnc_figure_style import (
     CTRL_STYLE,
     apply_ijrnc_style,
@@ -30,6 +28,9 @@ from ijrnc_figure_style import (
     style_axis,
 )
 
+from config import apply_algorithm_overrides, load_config
+from experiments.evaluation import make_controller, make_env, rollout
+from visualization.spectra import sampling_frequency
 
 OUT_DIR = ROOT.parent / "active-suspension-midterm-report" / "figures"
 SI_CKPT = ROOT / "results/20260621_182309_ppo/checkpoints/best.pt"
@@ -60,7 +61,9 @@ def _run_rl(config: dict, checkpoint: Path, scenario: dict) -> dict:
     return run
 
 
-def _run_classical(config: dict, controller: str, scenario: dict, use_preview: bool = False) -> dict:
+def _run_classical(
+    config: dict, controller: str, scenario: dict, use_preview: bool = False
+) -> dict:
     env = make_env(config, scenario=scenario, use_preview=use_preview)
     ctrl = make_controller(controller, env, config)
     run = rollout(env, ctrl, use_preview=use_preview)
@@ -83,7 +86,7 @@ def metric_bar(df: pd.DataFrame) -> None:
     x = np.arange(len(key_scenarios))
     width = 0.12
     offsets = (np.arange(len(controllers)) - (len(controllers) - 1) / 2) * width
-    for offset, ctrl in zip(offsets, controllers):
+    for offset, ctrl in zip(offsets, controllers, strict=True):
         vals = [
             plot_df[(plot_df["Scenario"] == scenario) & (plot_df["Controller"] == ctrl)][
                 "BodyAccRMS_mps2"
@@ -186,7 +189,10 @@ def rollout_set(config: dict, scenario: dict) -> dict[str, dict]:
 def time_domain_accel(runs: dict[str, dict]) -> None:
     fig = ieee_figure("single", height=2.25)
     gs = fig.add_gridspec(2, 1, left=0.18, right=0.97, bottom=0.16, top=0.96, hspace=0.20)
-    signals = [("ddzb", r"$\ddot z_b\ (\mathrm{m/s^2})$"), ("ddtheta", r"$\ddot\theta_b\ (\mathrm{rad/s^2})$")]
+    signals = [
+        ("ddzb", r"$\ddot z_b\ (\mathrm{m/s^2})$"),
+        ("ddtheta", r"$\ddot\theta_b\ (\mathrm{rad/s^2})$"),
+    ]
     for idx, (key, ylabel) in enumerate(signals):
         ax = fig.add_subplot(gs[idx])
         for ctrl, run in runs.items():
@@ -206,13 +212,20 @@ def time_domain_accel(runs: dict[str, dict]) -> None:
 def psd_plot(runs: dict[str, dict]) -> None:
     fig = ieee_figure("single", height=2.1)
     ax = fig.add_axes([0.18, 0.18, 0.78, 0.76])
-    fs = 1.0 / 0.001
     for ctrl, run in runs.items():
         steady = run["data"][run["data"]["time"] >= 1.0]
+        fs = sampling_frequency(steady["time"].to_numpy())
         nperseg = min(2048, max(128, len(steady) // 2))
         f, pxx = signal.welch(steady["ddzb"].values, fs=fs, nperseg=nperseg)
         style = CTRL_STYLE[ctrl]
-        ax.loglog(f, pxx, color=style["color"], linestyle=style["linestyle"], linewidth=0.5, label=style["label"])
+        ax.loglog(
+            f,
+            pxx,
+            color=style["color"],
+            linestyle=style["linestyle"],
+            linewidth=0.5,
+            label=style["label"],
+        )
     ax.set_xlim(1e-1, 30)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel(r"PSD of $\ddot z_b$")
@@ -256,7 +269,9 @@ def gate_behavior(sirppo_run: dict) -> None:
 def motion_plot(runs: dict[str, dict]) -> None:
     fig = ieee_figure("single", height=2.25)
     gs = fig.add_gridspec(2, 1, left=0.18, right=0.97, bottom=0.16, top=0.96, hspace=0.20)
-    for idx, (key, ylabel) in enumerate([("zb", r"$z_b\ (\mathrm{m})$"), ("theta", r"$\theta_b\ (\mathrm{rad})$")]):
+    for idx, (key, ylabel) in enumerate(
+        [("zb", r"$z_b\ (\mathrm{m})$"), ("theta", r"$\theta_b\ (\mathrm{rad})$")]
+    ):
         ax = fig.add_subplot(gs[idx])
         for ctrl, run in runs.items():
             data = run["data"]

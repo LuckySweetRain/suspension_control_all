@@ -10,6 +10,13 @@ class BaseRoadProfile:
     def value(self, t: float) -> float:
         raise NotImplementedError
 
+    def values(self, times: np.ndarray) -> np.ndarray:
+        """Sample heights in a batch; subclasses can supply a vectorized implementation."""
+        times = np.asarray(times, dtype=np.float64)
+        return np.fromiter((self.value(float(t)) for t in times.flat), dtype=np.float64).reshape(
+            times.shape
+        )
+
     def derivative(self, t: float) -> float:
         eps = 1e-3
         return (self.value(t + eps) - self.value(max(0.0, t - eps))) / (2 * eps)
@@ -23,13 +30,15 @@ class BaseRoadProfile:
         dzr = self.derivative(tr)
         return zf, dzf, zr, dzr
 
-    def preview(self, t: float, speed: float, wheelbase: float, steps: int, dt: float) -> np.ndarray:
-        rows = []
-        for k in range(1, steps + 1):
-            tk = t + k * dt
-            zf, _, zr, _ = self.pair(tk, speed, wheelbase)
-            rows.append([zf, zr])
-        return np.asarray(rows, dtype=np.float64)
+    def preview(
+        self, t: float, speed: float, wheelbase: float, steps: int, dt: float
+    ) -> np.ndarray:
+        if steps < 0 or int(steps) != steps or not np.isfinite(dt) or dt <= 0.0:
+            raise ValueError("preview requires non-negative integer steps and finite positive dt")
+        times = t + np.arange(1, steps + 1, dtype=np.float64) * dt
+        rear_times = np.maximum(0.0, times - wheelbase / max(speed, 1e-6))
+        # A height preview needs no road derivatives.
+        return np.column_stack([self.values(times), self.values(rear_times)])
 
 
 @dataclass
@@ -62,6 +71,9 @@ class IsoRoadProfile(BaseRoadProfile):
     def value(self, t: float) -> float:
         return float(np.interp(t, self._t, self._z, left=self._z[0], right=self._z[-1]))
 
+    def values(self, times: np.ndarray) -> np.ndarray:
+        return np.interp(times, self._t, self._z, left=self._z[0], right=self._z[-1])
+
     def derivative(self, t: float) -> float:
         return float(np.interp(t, self._t, self._dz, left=0.0, right=0.0))
 
@@ -72,6 +84,15 @@ class BumpRoadProfile(BaseRoadProfile):
     bump_length: float = 0.25
     bump_height: float = 0.1
     start_time: float = 0.6
+
+    def values(self, times: np.ndarray) -> np.ndarray:
+        times = np.asarray(times, dtype=np.float64)
+        duration = self.bump_length / max(self.speed, 1e-6)
+        omega = 2.0 * np.pi * self.speed / self.bump_length
+        heights = 0.5 * self.bump_height * (1.0 - np.cos(omega * (times - self.start_time)))
+        return np.where(
+            (times >= self.start_time) & (times <= self.start_time + duration), heights, 0.0
+        )
 
     def value(self, t: float) -> float:
         duration = self.bump_length / max(self.speed, 1e-6)
@@ -95,6 +116,10 @@ class SineRoadProfile(BaseRoadProfile):
     wavelength: float = 4.0
     phase: float = 0.0
 
+    def values(self, times: np.ndarray) -> np.ndarray:
+        omega = 2.0 * np.pi * self.speed / max(self.wavelength, 1e-6)
+        return self.amplitude * np.sin(omega * np.asarray(times) + self.phase)
+
     def value(self, t: float) -> float:
         omega = 2.0 * np.pi * self.speed / max(self.wavelength, 1e-6)
         return float(self.amplitude * np.sin(omega * t + self.phase))
@@ -109,6 +134,9 @@ class StepRoadProfile(BaseRoadProfile):
     height: float = 0.05
     start_time: float = 0.6
 
+    def values(self, times: np.ndarray) -> np.ndarray:
+        return np.where(np.asarray(times) >= self.start_time, self.height, 0.0)
+
     def value(self, t: float) -> float:
         return float(self.height if t >= self.start_time else 0.0)
 
@@ -122,6 +150,15 @@ class PotholeRoadProfile(BaseRoadProfile):
     length: float = 0.5
     depth: float = 0.06
     start_time: float = 0.6
+
+    def values(self, times: np.ndarray) -> np.ndarray:
+        times = np.asarray(times, dtype=np.float64)
+        duration = self.length / max(self.speed, 1e-6)
+        omega = 2.0 * np.pi * self.speed / self.length
+        heights = -0.5 * self.depth * (1.0 - np.cos(omega * (times - self.start_time)))
+        return np.where(
+            (times >= self.start_time) & (times <= self.start_time + duration), heights, 0.0
+        )
 
     def value(self, t: float) -> float:
         duration = self.length / max(self.speed, 1e-6)
@@ -150,12 +187,21 @@ class TableRoadProfile(BaseRoadProfile):
             raise ValueError("times and heights must be one-dimensional arrays with the same shape")
         if self.times.size < 2:
             raise ValueError("table road profiles require at least two samples")
+        if not np.all(np.isfinite(self.times)) or not np.all(np.isfinite(self.heights)):
+            raise ValueError("table road times and heights must be finite")
         if np.any(np.diff(self.times) <= 0.0):
             raise ValueError("table road times must be strictly increasing")
         self._dz = np.gradient(self.heights, self.times)
 
     def value(self, t: float) -> float:
-        return float(np.interp(t, self.times, self.heights, left=self.heights[0], right=self.heights[-1]))
+        return float(
+            np.interp(t, self.times, self.heights, left=self.heights[0], right=self.heights[-1])
+        )
+
+    def values(self, times: np.ndarray) -> np.ndarray:
+        return np.interp(
+            times, self.times, self.heights, left=self.heights[0], right=self.heights[-1]
+        )
 
     def derivative(self, t: float) -> float:
         return float(np.interp(t, self.times, self._dz, left=0.0, right=0.0))
@@ -168,6 +214,12 @@ class CompositeRoadProfile(BaseRoadProfile):
     def value(self, t: float) -> float:
         return float(sum(profile.value(t) for profile in self.profiles))
 
+    def values(self, times: np.ndarray) -> np.ndarray:
+        result = np.zeros_like(times, dtype=np.float64)
+        for profile in self.profiles:
+            result += profile.values(times)
+        return result
+
     def derivative(self, t: float) -> float:
         return float(sum(profile.derivative(t) for profile in self.profiles))
 
@@ -176,7 +228,27 @@ class RoadProfileFactory:
     @staticmethod
     def create(scenario: dict, duration: float, dt: float) -> BaseRoadProfile:
         road_type = scenario.get("type", "iso").lower()
+        if road_type not in {
+            "iso",
+            "bump",
+            "sine",
+            "step",
+            "pothole",
+            "table",
+            "csv",
+            "file",
+            "composite",
+        }:
+            raise ValueError(f"Unknown road type: {road_type}")
         speed = float(scenario.get("speed", 20.0))
+        for name, value in (("duration", duration), ("dt", dt), ("speed", speed)):
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError(f"road {name} must be finite and positive")
+        for key in ("bump_length", "length", "wavelength"):
+            if key in scenario and (
+                not np.isfinite(float(scenario[key])) or float(scenario[key]) <= 0.0
+            ):
+                raise ValueError(f"road {key} must be finite and positive")
         seed = int(scenario.get("seed", 42))
         if road_type == "bump":
             return BumpRoadProfile(
@@ -205,7 +277,9 @@ class RoadProfileFactory:
                 start_time=float(scenario.get("start_time", 0.6)),
             )
         if road_type == "table":
-            return TableRoadProfile(times=np.asarray(scenario["times"]), heights=np.asarray(scenario["heights"]))
+            return TableRoadProfile(
+                times=np.asarray(scenario["times"]), heights=np.asarray(scenario["heights"])
+            )
         if road_type in {"csv", "file"}:
             path = Path(str(scenario["path"]))
             delimiter = str(scenario.get("delimiter", ","))
@@ -213,7 +287,9 @@ class RoadProfileFactory:
             try:
                 data = np.loadtxt(path, delimiter=delimiter, comments="#", skiprows=skiprows)
             except ValueError:
-                data = np.loadtxt(path, delimiter=delimiter, comments="#", skiprows=max(1, skiprows))
+                data = np.loadtxt(
+                    path, delimiter=delimiter, comments="#", skiprows=max(1, skiprows)
+                )
             if data.ndim != 2 or data.shape[1] < 2:
                 raise ValueError("CSV road profiles require at least two columns: time,height")
             scale = float(scenario.get("scale", 1.0))

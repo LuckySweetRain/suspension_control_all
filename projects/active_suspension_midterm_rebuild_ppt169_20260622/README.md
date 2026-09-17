@@ -1,17 +1,19 @@
-# active_suspension_midterm_rebuild
+# 中期答辩重排版
 
-- Canvas format: ppt169
-- Created: 20260622
+创建于 2026-06-22，16 页，16:9 画布（1280 × 720）。
 
-## Directories
+## 目录用途
 
-- `svg_output/`: raw SVG output
-- `svg_final/`: finalized SVG output
-- `images/`: runtime image pool; converter assets keep their original short filenames when possible
-- `icons/`: project icon set — selected library icons copied in (via icon_sync.py) plus any custom icons you add; embedded from here at export
-- `notes/`: speaker notes
-- `templates/`: project templates
-- `sources/`: source materials and normalized markdown
-- `analysis/`: machine-extracted intermediate analysis (PPTX intake, image_analysis.csv) — the pipeline's canonical must-read source/asset facts
-- `exports/`: main native pptx (timestamped); `_svg.pptx` sibling added when exported with `--svg-snapshot`
-- `backup/<timestamp>/`: svg_output/ archive (always written in default-flow mode; safe to delete old timestamps)
+- `svg_output/`：可编辑 SVG 源稿。
+- `svg_final/`：完成素材嵌入的最终 SVG，供导出使用。
+- `images/`、`icons/`：本项目引用的图片与图标。
+- `notes/`：逐页讲稿与汇总稿。
+- `sources/`：整理后的报告源文。
+- `analysis/`：来源识别、页面库与图片分析，保留续编所需的素材依据。
+- `design_spec.md`、`spec_lock.md`：设计要求与已确定的版式参数。
+- `exports/`：最终演示文稿。
+
+## 中间文件
+
+PPT 截图、提取内容、推荐界面缓存和与现有源稿完全相同的时间戳备份已清理。
+上述中间目录已加入忽略规则；源稿、素材、分析记录和最终成果继续保留。

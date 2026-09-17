@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from .spectra import one_sided_psd
 
 STYLE = {
     "PASSIVE": ("tab:gray", "-"),
@@ -118,9 +119,4 @@ def _select_reference_scenario(trajs: dict[str, pd.DataFrame]) -> str:
 
 
 def _simple_psd(time: np.ndarray, signal: np.ndarray):
-    dt = float(np.mean(np.diff(time)))
-    signal = signal - np.mean(signal)
-    spec = np.fft.rfft(signal)
-    freq = np.fft.rfftfreq(signal.size, dt)
-    pxx = (np.abs(spec) ** 2) * dt / max(signal.size, 1)
-    return freq, pxx
+    return one_sided_psd(time, signal)

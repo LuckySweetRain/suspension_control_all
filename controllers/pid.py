@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import Controller, split_generalized_force
 from models.half_car import HalfCarParams
+
+from .base import Controller, split_generalized_force
 
 
 class PIDController(Controller):
@@ -42,5 +43,9 @@ class PIDController(Controller):
         self.prev_z = error_z
         self.prev_theta = error_theta
         ub = self.kp_z * error_z + self.ki_z * self.int_z + self.kd_z * derivative_z
-        utheta = self.kp_theta * error_theta + self.ki_theta * self.int_theta + self.kd_theta * derivative_theta
+        utheta = (
+            self.kp_theta * error_theta
+            + self.ki_theta * self.int_theta
+            + self.kd_theta * derivative_theta
+        )
         return split_generalized_force(ub, utheta, self.params.a, self.params.b, self.fmax)

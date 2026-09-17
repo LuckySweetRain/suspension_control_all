@@ -7,7 +7,9 @@ import torch
 import torch.nn as nn
 
 
-def mlp(input_dim: int, hidden_sizes: list[int], output_dim: int, final_tanh: bool = False) -> nn.Sequential:
+def mlp(
+    input_dim: int, hidden_sizes: list[int], output_dim: int, final_tanh: bool = False
+) -> nn.Sequential:
     layers: list[nn.Module] = []
     prev = input_dim
     for hidden in hidden_sizes:
@@ -34,7 +36,9 @@ class SinusoidalPositionalEncoding(nn.Module):
 
 
 class PreviewEncoder(nn.Module):
-    def __init__(self, token_dim: int, embed_dim: int, layers: int, heads: int, ff_dim: int, dropout: float):
+    def __init__(
+        self, token_dim: int, embed_dim: int, layers: int, heads: int, ff_dim: int, dropout: float
+    ):
         super().__init__()
         self.proj = nn.Linear(token_dim, embed_dim)
         self.pos = SinusoidalPositionalEncoding(embed_dim)
@@ -78,7 +82,9 @@ class TransformerActor(nn.Module):
         self.cfg = cfg
         self.spec = ObsSpec(cfg.obs_dim_base, cfg.preview_steps, cfg.preview_token_dim)
         self.act_limit = cfg.act_limit
-        self.base_encoder = mlp(cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim)
+        self.base_encoder = mlp(
+            cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim
+        )
         self.preview_encoder = PreviewEncoder(
             cfg.preview_token_dim,
             cfg.preview_embed_dim,
@@ -106,7 +112,9 @@ class TransformerGaussianActor(nn.Module):
         self.cfg = cfg
         self.spec = ObsSpec(cfg.obs_dim_base, cfg.preview_steps, cfg.preview_token_dim)
         self.act_limit = cfg.act_limit
-        self.base_encoder = mlp(cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim)
+        self.base_encoder = mlp(
+            cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim
+        )
         self.preview_encoder = PreviewEncoder(
             cfg.preview_token_dim,
             cfg.preview_embed_dim,
@@ -116,7 +124,9 @@ class TransformerGaussianActor(nn.Module):
             cfg.transformer_dropout,
         )
         feature_dim = cfg.base_encoder_dim + cfg.preview_embed_dim
-        hidden = mlp(feature_dim, cfg.hidden_sizes, cfg.hidden_sizes[-1] if cfg.hidden_sizes else feature_dim)
+        hidden = mlp(
+            feature_dim, cfg.hidden_sizes, cfg.hidden_sizes[-1] if cfg.hidden_sizes else feature_dim
+        )
         self.trunk = hidden
         last_dim = cfg.hidden_sizes[-1] if cfg.hidden_sizes else feature_dim
         self.mu = nn.Linear(last_dim, cfg.act_dim)
@@ -126,7 +136,9 @@ class TransformerGaussianActor(nn.Module):
 
     def _features(self, obs: torch.Tensor) -> torch.Tensor:
         base, preview = self.spec.split(obs)
-        return self.trunk(torch.cat([self.base_encoder(base), self.preview_encoder(preview)], dim=-1))
+        return self.trunk(
+            torch.cat([self.base_encoder(base), self.preview_encoder(preview)], dim=-1)
+        )
 
     def forward(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = self._features(obs)
@@ -134,7 +146,9 @@ class TransformerGaussianActor(nn.Module):
         log_std = torch.clamp(self.log_std(x), self.log_std_min, self.log_std_max)
         return mu, log_std
 
-    def sample(self, obs: torch.Tensor, deterministic: bool = False) -> tuple[torch.Tensor, torch.Tensor | None]:
+    def sample(
+        self, obs: torch.Tensor, deterministic: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         mu, log_std = self(obs)
         if deterministic:
             pre_tanh = mu
@@ -150,7 +164,9 @@ class TransformerGaussianActor(nn.Module):
             ((pre_tanh - mu) / (std + 1e-8)).pow(2) + 2 * log_std + math.log(2 * math.pi)
         )
         log_prob = normal_log_prob.sum(dim=-1, keepdim=True)
-        log_prob -= torch.log(self.act_limit * (1 - squashed.pow(2)) + 1e-6).sum(dim=-1, keepdim=True)
+        log_prob -= torch.log(self.act_limit * (1 - squashed.pow(2)) + 1e-6).sum(
+            dim=-1, keepdim=True
+        )
         return action, log_prob
 
 
@@ -159,7 +175,9 @@ class TransformerValue(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.spec = ObsSpec(cfg.obs_dim_base, cfg.preview_steps, cfg.preview_token_dim)
-        self.base_encoder = mlp(cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim)
+        self.base_encoder = mlp(
+            cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim
+        )
         self.preview_encoder = PreviewEncoder(
             cfg.preview_token_dim,
             cfg.preview_embed_dim,
@@ -181,7 +199,9 @@ class TransformerCritic(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.spec = ObsSpec(cfg.obs_dim_base, cfg.preview_steps, cfg.preview_token_dim)
-        self.base_encoder = mlp(cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim)
+        self.base_encoder = mlp(
+            cfg.obs_dim_base, [cfg.base_encoder_dim, cfg.base_encoder_dim], cfg.base_encoder_dim
+        )
         self.preview_encoder = PreviewEncoder(
             cfg.preview_token_dim,
             cfg.preview_embed_dim,

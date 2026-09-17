@@ -54,7 +54,7 @@ class HalfCarParams:
         return float(front), float(rear)
 
     @classmethod
-    def from_seed(cls, seed: int = 42) -> "HalfCarParams":
+    def from_seed(cls, seed: int = 42) -> HalfCarParams:
         p = cls()
         rng = np.random.default_rng(seed)
 
@@ -75,9 +75,12 @@ class HalfCarParams:
         return p
 
     @classmethod
-    def from_config(cls, config: dict, seed: int | None = None) -> "HalfCarParams":
+    def from_config(cls, config: dict, seed: int | None = None) -> HalfCarParams:
         p = cls.from_seed(int(config.get("seed", 42) if seed is None else seed))
+        p.fmax = float(config.get("force_limit", p.fmax))
         overrides = dict(config.get("vehicle_params", {}) or {})
+        if "fmax" in overrides and float(overrides["fmax"]) != p.fmax:
+            raise ValueError("vehicle_params.fmax must match force_limit")
         if not overrides:
             return p
 
@@ -135,8 +138,16 @@ class HalfCarModel:
 
         fsf = p.kf1_real * delta_yf + p.knf1_real * delta_yf**3
         fsr = p.kr1_real * delta_yr + p.knr1_real * delta_yr**3
-        fdf = 0.5 * ((p.be_real + p.bc_real) + (p.be_real - p.bc_real) * np.sign(delta_dyf)) * delta_dyf
-        fdr = 0.5 * ((p.be_real + p.bc_real) + (p.be_real - p.bc_real) * np.sign(delta_dyr)) * delta_dyr
+        fdf = (
+            0.5
+            * ((p.be_real + p.bc_real) + (p.be_real - p.bc_real) * np.sign(delta_dyf))
+            * delta_dyf
+        )
+        fdr = (
+            0.5
+            * ((p.be_real + p.bc_real) + (p.be_real - p.bc_real) * np.sign(delta_dyr))
+            * delta_dyr
+        )
         ftf = p.kf2 * (zwf - zdf)
         ftr = p.kr2 * (zwr - zdr)
         fbf = p.bf2 * (dzwf - dzdf)
@@ -145,7 +156,9 @@ class HalfCarModel:
         ub = uaf + uar
         utheta = p.a_real * uaf - p.b_real * uar
         ddzb = -(fsf + fdf + fsr + fdr) / p.mb_real + ub / p.mb_real
-        ddtheta = (-(p.a_real * (fsf + fdf)) + p.b_real * (fsr + fdr)) / p.Ip_real + utheta / p.Ip_real
+        ddtheta = (
+            -(p.a_real * (fsf + fdf)) + p.b_real * (fsr + fdr)
+        ) / p.Ip_real + utheta / p.Ip_real
         ddzwf = (fsf + fdf - ftf - fbf) / p.mwf - uaf / p.mwf
         ddzwr = (fsr + fdr - ftr - fbr) / p.mwr - uar / p.mwr
 
@@ -171,7 +184,9 @@ class HalfCarModel:
             dtype=np.float64,
         )
 
-    def rk4_step(self, x: np.ndarray, action: np.ndarray, road: np.ndarray, dt: float) -> np.ndarray:
+    def rk4_step(
+        self, x: np.ndarray, action: np.ndarray, road: np.ndarray, dt: float
+    ) -> np.ndarray:
         action = self.clip_action(action)
         k1 = self.derivative(x, action, road)
         k2 = self.derivative(x + 0.5 * dt * k1, action, road)

@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 import pandas as pd
+from matplotlib.animation import FuncAnimation, PillowWriter
 
 
 def animate_half_car(
@@ -21,7 +21,6 @@ def animate_half_car(
     if df.empty:
         raise ValueError(f"No samples found in {csv_path}")
 
-    wheelbase = 2.7
     front_x = 1.2
     rear_x = -1.5
     body_half_height = 0.18
@@ -43,11 +42,13 @@ def animate_half_car(
     ax.set_xlabel("Longitudinal position (m)")
     ax.set_ylabel(f"Vertical displacement x{vertical_scale:g}")
 
-    body_line, = ax.plot([], [], color="black", linewidth=5, solid_capstyle="round")
-    road_line, = ax.plot([], [], color="tab:gray", linewidth=3)
-    front_link, = ax.plot([], [], color="tab:blue", linewidth=2)
-    rear_link, = ax.plot([], [], color="tab:blue", linewidth=2)
-    front_wheel = plt.Circle((0, 0), tire_radius * 0.65, fill=False, linewidth=3, color="tab:orange")
+    (body_line,) = ax.plot([], [], color="black", linewidth=5, solid_capstyle="round")
+    (road_line,) = ax.plot([], [], color="tab:gray", linewidth=3)
+    (front_link,) = ax.plot([], [], color="tab:blue", linewidth=2)
+    (rear_link,) = ax.plot([], [], color="tab:blue", linewidth=2)
+    front_wheel = plt.Circle(
+        (0, 0), tire_radius * 0.65, fill=False, linewidth=3, color="tab:orange"
+    )
     rear_wheel = plt.Circle((0, 0), tire_radius * 0.65, fill=False, linewidth=3, color="tab:orange")
     ax.add_patch(front_wheel)
     ax.add_patch(rear_wheel)
@@ -75,8 +76,7 @@ def animate_half_car(
         front_wheel.center = (front_x, wf)
         rear_wheel.center = (rear_x, wr)
         title.set_text(
-            f"{csv_path.stem}  t={row.time:.2f}s  "
-            f"Uaf={row.Uaf:.1f}N  Uar={row.Uar:.1f}N"
+            f"{csv_path.stem}  t={row.time:.2f}s  Uaf={row.Uaf:.1f}N  Uar={row.Uar:.1f}N"
         )
         return body_line, road_line, front_link, rear_link, front_wheel, rear_wheel, title
 

@@ -5,13 +5,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .base import Controller
 from config import apply_algorithm_overrides
 from rl.ddpg import DDPGAgent, DDPGConfig
 from rl.ppo import PPOAgent, PPOConfig
 from rl.sac import SACAgent, SACConfig
 from rl.td3 import TD3Agent, TD3Config
 
+from .base import Controller
 
 ALGORITHMS = {
     "td3": (TD3Config, TD3Agent, "TD3"),

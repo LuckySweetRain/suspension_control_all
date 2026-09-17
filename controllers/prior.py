@@ -1,10 +1,62 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from .mpc import MPCController
 from .pid import PIDController
 from .spdf import SPDFController
+
+
+@dataclass
+class PolicyAction:
+    action: np.ndarray
+    unprojected_action: np.ndarray
+    prior_action: np.ndarray | None
+    improvement_gate: float
+    projection_delta_rms: float
+    projection_error: float
+
+    @property
+    def step_action(self) -> np.ndarray | dict:
+        if self.prior_action is None:
+            return self.action
+        return {"action": self.action, "prior_action": self.prior_action}
+
+
+def prepare_policy_action(
+    policy_action: np.ndarray, env, obs: np.ndarray, info: dict, config: dict, prior=None
+) -> PolicyAction:
+    """Use the same action transformations during training and deployment."""
+    residual_cfg = config.get("residual_control", {})
+    if residual_cfg.get("enabled", False):
+        prior_action = compute_prior_action(prior, env, obs, info)
+        residual = shield_residual_action(policy_action, env, info, residual_cfg)
+        unprojected = np.clip(
+            prior_action + residual_gate(info, residual_cfg) * residual,
+            env.action_space.low,
+            env.action_space.high,
+        )
+        gate = 1.0
+    else:
+        prior_action = None
+        unprojected = parameterize_policy_action(
+            policy_action, env, info, config.get("policy_action_parameterization", {})
+        )
+        unprojected, gate = policy_improvement_gate(
+            unprojected, env, info, config.get("policy_improvement_gate", {})
+        )
+    action = shield_policy_action(unprojected, env, info, config.get("policy_safety", {}))
+    delta_rms = float(np.sqrt(np.mean(np.square(action - unprojected))))
+    return PolicyAction(
+        action=action,
+        unprojected_action=np.asarray(unprojected, dtype=np.float32),
+        prior_action=prior_action,
+        improvement_gate=gate,
+        projection_delta_rms=delta_rms,
+        projection_error=delta_rms / max(float(env.force_limit), 1e-6),
+    )
 
 
 def adapt_action_to_env(action: np.ndarray, env) -> np.ndarray:
@@ -14,12 +66,16 @@ def adapt_action_to_env(action: np.ndarray, env) -> np.ndarray:
     if action.shape == (act_dim,):
         return np.clip(action, -force_limit, force_limit).astype(np.float32)
     if action.shape == (2,) and act_dim == 4:
-        adapted = np.asarray([0.5 * action[0], 0.5 * action[0], 0.5 * action[1], 0.5 * action[1]], dtype=np.float64)
+        adapted = np.asarray(
+            [0.5 * action[0], 0.5 * action[0], 0.5 * action[1], 0.5 * action[1]], dtype=np.float64
+        )
         return np.clip(adapted, -force_limit, force_limit).astype(np.float32)
     if action.shape == (4,) and act_dim == 2:
         adapted = np.asarray([action[0] + action[1], action[2] + action[3]], dtype=np.float64)
         return np.clip(adapted, -force_limit, force_limit).astype(np.float32)
-    raise ValueError(f"Cannot adapt prior action shape {action.shape} to env action shape {(act_dim,)}")
+    raise ValueError(
+        f"Cannot adapt prior action shape {action.shape} to env action shape {(act_dim,)}"
+    )
 
 
 def make_prior_controller(name: str, env, config: dict):
@@ -186,7 +242,9 @@ def parameterize_policy_action(action: np.ndarray, env, info: dict, cfg: dict) -
     return np.clip(action_out, env.action_space.low, env.action_space.high).astype(np.float32)
 
 
-def policy_improvement_gate(action: np.ndarray, env, info: dict, cfg: dict) -> tuple[np.ndarray, float]:
+def policy_improvement_gate(
+    action: np.ndarray, env, info: dict, cfg: dict
+) -> tuple[np.ndarray, float]:
     gate_cfg = dict(cfg or {})
     filtered = adapt_action_to_env(action, env).astype(np.float64)
     if not gate_cfg.get("enabled", False):
@@ -197,7 +255,9 @@ def policy_improvement_gate(action: np.ndarray, env, info: dict, cfg: dict) -> t
         raise ValueError("policy_improvement_gate.teacher currently supports passive/zero only")
     teacher_action = np.zeros_like(filtered, dtype=np.float64)
 
-    preview = np.asarray(info.get("road_preview_clean", info.get("road_preview", [])), dtype=np.float64)
+    preview = np.asarray(
+        info.get("road_preview_clean", info.get("road_preview", [])), dtype=np.float64
+    )
     road_scale = max(float(getattr(env, "road_scale", 1.0)), 1e-6)
     preview_rms = float(np.sqrt(np.mean(np.square(preview / road_scale)))) if preview.size else 0.0
     preview_threshold = float(gate_cfg.get("preview_rms_threshold", 0.12))
@@ -232,6 +292,10 @@ def policy_improvement_gate(action: np.ndarray, env, info: dict, cfg: dict) -> t
 
     min_scale = float(gate_cfg.get("min_scale", 0.0))
     max_scale = float(gate_cfg.get("max_scale", 1.0))
-    scale = float(np.clip(min_scale + (max_scale - min_scale) * demand_gate * safety_gate, min_scale, max_scale))
+    scale = float(
+        np.clip(
+            min_scale + (max_scale - min_scale) * demand_gate * safety_gate, min_scale, max_scale
+        )
+    )
     blended = teacher_action + scale * (filtered - teacher_action)
     return blended.astype(np.float32), scale

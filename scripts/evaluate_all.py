@@ -30,7 +30,7 @@ def resolve_checkpoint(value: str | None, algorithm: str = "td3") -> str | None:
             "Checkpoint path still contains the placeholder '<run>'. "
             "Use a real run directory, for example "
             "results\\20260517_180625_td3\\checkpoints\\final.pt."
-    )
+        )
     if value.lower() == "latest":
         candidates = _latest_checkpoint_candidates(algorithm)
         if not candidates:
@@ -53,9 +53,19 @@ def resolve_checkpoints(value: str | None) -> dict[str, str]:
         if not item.strip():
             continue
         if "=" not in item:
-            raise ValueError("Use --checkpoints as algorithm=path pairs, for example td3=latest,sac=latest")
+            raise ValueError(
+                "Use --checkpoints as algorithm=path pairs, for example td3=latest,sac=latest"
+            )
         algorithm, checkpoint = item.split("=", 1)
         algorithm = algorithm.strip().lower()
+        if algorithm not in {"td3", "ddpg", "sac", "ppo"}:
+            raise ValueError(
+                f"Unsupported checkpoint algorithm: {algorithm!r}; choose td3, ddpg, sac, or ppo"
+            )
+        if algorithm in resolved:
+            raise ValueError(f"Duplicate checkpoint algorithm: {algorithm}")
+        if not checkpoint.strip():
+            raise ValueError(f"Checkpoint path cannot be empty for {algorithm}")
         resolved[algorithm] = resolve_checkpoint(checkpoint.strip(), algorithm=algorithm)
     return resolved
 
@@ -66,14 +76,18 @@ def main():
     parser.add_argument(
         "--checkpoints",
         default=None,
-        help="Comma-separated algorithm=checkpoint pairs, e.g. td3=latest,sac=latest,ppo=latest,bp_nmps=latest",
+        help="Comma-separated algorithm=checkpoint pairs, e.g. td3=latest,sac=latest,ppo=latest",
     )
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
     config = load_config(ROOT / args.config)
     checkpoints = resolve_checkpoints(args.checkpoints)
-    result_dir = Path(args.out) if args.out else ROOT / "results" / datetime.now().strftime("%Y%m%d_%H%M%S_eval")
+    result_dir = (
+        Path(args.out)
+        if args.out
+        else ROOT / "results" / datetime.now().strftime("%Y%m%d_%H%M%S_eval")
+    )
     metrics, _ = evaluate_all(config, checkpoints, result_dir)
     print(metrics)
     plot_all(result_dir)

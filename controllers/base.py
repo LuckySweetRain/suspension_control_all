@@ -13,8 +13,9 @@ class Controller:
         raise NotImplementedError
 
 
-def split_generalized_force(ub: float, utheta: float, a: float, b: float, fmax: float) -> np.ndarray:
+def split_generalized_force(
+    ub: float, utheta: float, a: float, b: float, fmax: float
+) -> np.ndarray:
     uaf = (b * ub + utheta) / (a + b)
     uar = (a * ub - utheta) / (a + b)
     return np.clip(np.asarray([uaf, uar], dtype=np.float64), -fmax, fmax)
-

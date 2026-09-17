@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from config import half_car_dimensions
+
 from .networks import TransformerActor, TransformerCritic
 
 
@@ -41,13 +43,9 @@ class TD3Config:
         return self.obs_dim_base + self.preview_steps * self.preview_token_dim
 
     @classmethod
-    def from_project_config(cls, config: dict) -> "TD3Config":
+    def from_project_config(cls, config: dict) -> TD3Config:
         rl = config["rl"]
-        act_dim = int(rl.get("act_dim", 2))
-        history_cfg = dict(config.get("observation", {}).get("history", {}))
-        history_steps = int(history_cfg.get("steps", 0)) if history_cfg.get("enabled", False) else 0
-        action_obs_dim = act_dim if config.get("action_in_observation", False) else 0
-        obs_dim_base = 14 + action_obs_dim + history_steps * (14 + 2 * act_dim)
+        act_dim, _, obs_dim_base = half_car_dimensions(config)
         return cls(
             obs_dim_base=int(rl.get("obs_dim_base", obs_dim_base)),
             preview_steps=int(config["preview"]["steps"]),
@@ -140,8 +138,12 @@ class TD3Agent:
                 -self.cfg.noise_clip,
                 self.cfg.noise_clip,
             )
-            next_act = torch.clamp(self.actor_target(next_obs) + noise, -self.cfg.act_limit, self.cfg.act_limit)
-            target_q = torch.min(self.critic1_target(next_obs, next_act), self.critic2_target(next_obs, next_act))
+            next_act = torch.clamp(
+                self.actor_target(next_obs) + noise, -self.cfg.act_limit, self.cfg.act_limit
+            )
+            target_q = torch.min(
+                self.critic1_target(next_obs, next_act), self.critic2_target(next_obs, next_act)
+            )
             target = rew.unsqueeze(1) + (1 - done.unsqueeze(1)) * self.cfg.gamma * target_q
         q1 = self.critic1(obs, act)
         q2 = self.critic2(obs, act)
@@ -153,7 +155,9 @@ class TD3Agent:
         self.critic_optimizer.step()
         return float(loss.item())
 
-    def _update_actor(self, batch: dict, expert_batch: dict | None = None, bc_weight: float = 0.0) -> float:
+    def _update_actor(
+        self, batch: dict, expert_batch: dict | None = None, bc_weight: float = 0.0
+    ) -> float:
         actor_action = self.actor(batch["obs"])
         policy_loss = -self.critic1(batch["obs"], actor_action).mean()
         policy_loss = self.cfg.q_policy_weight * policy_loss
@@ -163,8 +167,10 @@ class TD3Agent:
             loss = loss + self.cfg.action_l2_weight * action_l2
         if expert_batch is not None and bc_weight > 0.0:
             expert_action = self.actor(expert_batch["obs"])
-            bc_loss = nn.MSELoss()(expert_action / self.cfg.act_limit, expert_batch["act"] / self.cfg.act_limit)
-            loss = policy_loss + float(bc_weight) * bc_loss
+            bc_loss = nn.MSELoss()(
+                expert_action / self.cfg.act_limit, expert_batch["act"] / self.cfg.act_limit
+            )
+            loss = loss + float(bc_weight) * bc_loss
         self.actor_optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.cfg.gradient_clip)
@@ -207,7 +213,7 @@ class TD3Agent:
             (self.critic1, self.critic1_target),
             (self.critic2, self.critic2_target),
         ):
-            for p, tp in zip(net.parameters(), target.parameters()):
+            for p, tp in zip(net.parameters(), target.parameters(), strict=True):
                 tp.data.copy_(tau * p.data + (1 - tau) * tp.data)
 
     def save(self, path: Path):

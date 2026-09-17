@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from config import half_car_dimensions
+
 from .networks import TransformerCritic, TransformerGaussianActor
 
 
@@ -42,14 +44,10 @@ class SACConfig:
         return self.obs_dim_base + self.preview_steps * self.preview_token_dim
 
     @classmethod
-    def from_project_config(cls, config: dict) -> "SACConfig":
+    def from_project_config(cls, config: dict) -> SACConfig:
         rl = config["rl"]
         sac = rl.get("sac", {})
-        act_dim = int(rl.get("act_dim", 2))
-        history_cfg = dict(config.get("observation", {}).get("history", {}))
-        history_steps = int(history_cfg.get("steps", 0)) if history_cfg.get("enabled", False) else 0
-        action_obs_dim = act_dim if config.get("action_in_observation", False) else 0
-        obs_dim_base = 14 + action_obs_dim + history_steps * (14 + 2 * act_dim)
+        act_dim, _, obs_dim_base = half_car_dimensions(config)
         return cls(
             obs_dim_base=int(rl.get("obs_dim_base", obs_dim_base)),
             preview_steps=int(config["preview"]["steps"]),
@@ -93,7 +91,9 @@ class SACAgent:
             list(self.critic1.parameters()) + list(self.critic2.parameters()),
             lr=cfg.critic_lr,
         )
-        self.log_alpha = torch.tensor(np.log(cfg.alpha), dtype=torch.float32, device=device, requires_grad=True)
+        self.log_alpha = torch.tensor(
+            np.log(cfg.alpha), dtype=torch.float32, device=device, requires_grad=True
+        )
         self.alpha_optimizer = optim.Adam([self.log_alpha], lr=cfg.alpha_lr)
 
     @property
@@ -121,7 +121,9 @@ class SACAgent:
         )
         with torch.no_grad():
             next_act, next_log_prob = self.actor.sample(next_obs)
-            target_q = torch.min(self.critic1_target(next_obs, next_act), self.critic2_target(next_obs, next_act))
+            target_q = torch.min(
+                self.critic1_target(next_obs, next_act), self.critic2_target(next_obs, next_act)
+            )
             target_q = target_q - self.alpha.detach() * next_log_prob
             target = rew.unsqueeze(1) + (1 - done.unsqueeze(1)) * self.cfg.gamma * target_q
         q1 = self.critic1(obs, act)
@@ -142,7 +144,9 @@ class SACAgent:
         self.actor_optimizer.step()
 
         if self.cfg.automatic_entropy_tuning:
-            alpha_loss = -(self.log_alpha * (log_prob + float(self.cfg.target_entropy)).detach()).mean()
+            alpha_loss = -(
+                self.log_alpha * (log_prob + float(self.cfg.target_entropy)).detach()
+            ).mean()
             self.alpha_optimizer.zero_grad()
             alpha_loss.backward()
             self.alpha_optimizer.step()
@@ -150,8 +154,11 @@ class SACAgent:
         return float(critic_loss.item()), float(actor_loss.item())
 
     def _soft_update(self):
-        for net, target in ((self.critic1, self.critic1_target), (self.critic2, self.critic2_target)):
-            for p, tp in zip(net.parameters(), target.parameters()):
+        for net, target in (
+            (self.critic1, self.critic1_target),
+            (self.critic2, self.critic2_target),
+        ):
+            for p, tp in zip(net.parameters(), target.parameters(), strict=True):
                 tp.data.copy_(self.cfg.tau * p.data + (1 - self.cfg.tau) * tp.data)
 
     def save(self, path: Path):

@@ -3,12 +3,12 @@
 These settings mirror the MATLAB plotting utilities used for Chapter 5:
 ``saveIEEEFig.m``, ``setIEEEStyle.m`` and the tight subplot scripts.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
 
 SINGLE_WIDTH = 3.5
 DOUBLE_WIDTH = 7.16

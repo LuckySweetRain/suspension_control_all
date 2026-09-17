@@ -6,7 +6,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-
 BASE_GAINS = {
     "k_z": 1200.0,
     "k_dz": 1800.0,
@@ -105,7 +104,9 @@ def summarize_mpc_parameter_schedule(result_dir: Path) -> dict:
     result_dir = Path(result_dir)
     rows = _trajectory_rows(result_dir)
     if not rows:
-        raise FileNotFoundError(f"No BP_NMPS trajectories with mpc_param_gain_* columns found in {result_dir}")
+        raise FileNotFoundError(
+            f"No BP_NMPS trajectories with mpc_param_gain_* columns found in {result_dir}"
+        )
     summary = pd.DataFrame(rows)
     csv_path = result_dir / "mpc_parameter_schedule_summary.csv"
     summary.to_csv(csv_path, index=False)
@@ -124,7 +125,11 @@ def summarize_mpc_parameter_schedule(result_dir: Path) -> dict:
         "| --- | " + " | ".join(["---:"] * len(gain_cols)) + " |",
     ]
     for _, row in summary.iterrows():
-        lines.append("| " + " | ".join([str(row["Scenario"]), *[_format(row[col]) for col in gain_cols]]) + " |")
+        lines.append(
+            "| "
+            + " | ".join([str(row["Scenario"]), *[_format(row[col]) for col in gain_cols]])
+            + " |"
+        )
     if delta_cols:
         lines += [
             "",
@@ -134,7 +139,11 @@ def summarize_mpc_parameter_schedule(result_dir: Path) -> dict:
             "| --- | " + " | ".join(["---:"] * len(delta_cols)) + " |",
         ]
         for _, row in summary.iterrows():
-            lines.append("| " + " | ".join([str(row["Scenario"]), *[_format(row[col]) for col in delta_cols]]) + " |")
+            lines.append(
+                "| "
+                + " | ".join([str(row["Scenario"]), *[_format(row[col]) for col in delta_cols]])
+                + " |"
+            )
     if figure_path:
         rel = figure_path.resolve().relative_to(result_dir.resolve())
         lines += ["", "## Figure", "", f"![BP-NMPS gain schedule]({rel.as_posix()})", ""]

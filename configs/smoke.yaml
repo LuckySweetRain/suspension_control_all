@@ -1,0 +1,41 @@
+# Small deterministic integration run; not a research or convergence benchmark.
+inherits: default.yaml
+episode_seconds: 0.1
+settle_seconds: 0.0
+preview:
+  steps: 4
+mpc:
+  horizon: 2
+  max_iter: 2
+  replan_interval: 2
+expert:
+  enabled: false
+  bc_enabled: false
+imitation:
+  enabled: false
+rl:
+  episodes: 1
+  hidden_sizes: [16, 16]
+  batch_size: 4
+  buffer_size: 64
+  warmup_steps: 2
+  random_warmup: true
+  update_after: 4
+  update_every: 2
+  save_every: 1
+  eval_every: 1
+  preview_embed_dim: 8
+  transformer_layers: 1
+  transformer_heads: 2
+  transformer_ff_dim: 16
+  ppo:
+    train_epochs: 1
+    minibatch_size: 4
+evaluation:
+  controllers: ["PASSIVE", "PID", "SPDF", "MPC"]
+scenarios:
+  - name: smoke_sine
+    type: sine
+    speed: 10.0
+    amplitude: 0.002
+    wavelength: 4.0

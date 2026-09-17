@@ -6,12 +6,14 @@ import torch
 
 class ReplayBuffer:
     def __init__(self, obs_dim: int, act_dim: int, capacity: int):
+        if any(int(value) != value or value <= 0 for value in (obs_dim, act_dim, capacity)):
+            raise ValueError("Replay buffer dimensions and capacity must be positive integers")
         self.capacity = int(capacity)
-        self.obs = np.zeros((capacity, obs_dim), dtype=np.float32)
-        self.act = np.zeros((capacity, act_dim), dtype=np.float32)
-        self.rew = np.zeros(capacity, dtype=np.float32)
-        self.next_obs = np.zeros((capacity, obs_dim), dtype=np.float32)
-        self.done = np.zeros(capacity, dtype=np.float32)
+        self.obs = np.zeros((self.capacity, int(obs_dim)), dtype=np.float32)
+        self.act = np.zeros((self.capacity, int(act_dim)), dtype=np.float32)
+        self.rew = np.zeros(self.capacity, dtype=np.float32)
+        self.next_obs = np.zeros_like(self.obs)
+        self.done = np.zeros(self.capacity, dtype=np.float32)
         self.ptr = 0
         self.size = 0
 
@@ -25,11 +27,17 @@ class ReplayBuffer:
         self.size = min(self.size + 1, self.capacity)
 
     def sample(self, batch_size: int, device: torch.device):
+        if self.size == 0:
+            raise ValueError("Cannot sample an empty replay buffer")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
         idx = np.random.randint(0, self.size, size=batch_size)
         return self.sample_indices(idx, device)
 
     def sample_indices(self, idx, device: torch.device):
         idx = np.asarray(idx, dtype=np.int64)
+        if np.any(idx < 0) or np.any(idx >= self.size):
+            raise IndexError("Replay indices must refer to stored transitions")
         return {
             "obs": torch.as_tensor(self.obs[idx], dtype=torch.float32, device=device),
             "act": torch.as_tensor(self.act[idx], dtype=torch.float32, device=device),
@@ -66,7 +74,9 @@ class MixedReplaySampler:
     @property
     def expert_ratio(self) -> float:
         progress = min(1.0, self.current_episode / self.decay_episodes)
-        return self.initial_expert_ratio + progress * (self.final_expert_ratio - self.initial_expert_ratio)
+        return self.initial_expert_ratio + progress * (
+            self.final_expert_ratio - self.initial_expert_ratio
+        )
 
     def sample(self, batch_size: int, device: torch.device):
         if len(self.expert_buffer) == 0:
@@ -84,7 +94,4 @@ class MixedReplaySampler:
             parts.append(self.expert_buffer.sample(expert_n, device))
         if len(parts) == 1:
             return parts[0]
-        return {
-            key: torch.cat([part[key] for part in parts], dim=0)
-            for key in parts[0].keys()
-        }
+        return {key: torch.cat([part[key] for part in parts], dim=0) for key in parts[0].keys()}

@@ -37,7 +37,9 @@ def collect_expert_dataset(
 ) -> dict:
     config = load_config(config_path)
     rng_seed = int(seed if seed is not None else config.get("seed", 42))
-    sampler = ScenarioSampler(list(config["scenarios"]), config, rng=np.random.default_rng(rng_seed))
+    sampler = ScenarioSampler(
+        list(config["scenarios"]), config, rng=np.random.default_rng(rng_seed)
+    )
     observations: list[np.ndarray] = []
     actions: list[np.ndarray] = []
     residual_actions: list[np.ndarray] = []
@@ -54,7 +56,9 @@ def collect_expert_dataset(
         scenario = sampler.select(episode)
         env = make_env(config, scenario=scenario, use_preview=True)
         expert_controller = make_controller(expert, env, config)
-        prior_controller = make_prior_controller(residual_prior, env, config) if residual_prior else None
+        prior_controller = (
+            make_prior_controller(residual_prior, env, config) if residual_prior else None
+        )
         try:
             obs, info = env.reset(seed=rng_seed + episode)
             expert_controller.reset()
@@ -68,7 +72,9 @@ def collect_expert_dataset(
                     prior_action = compute_prior_action(prior_controller, env, obs, info)
                 else:
                     prior_action = np.zeros_like(action)
-                residual_action = np.clip(action - prior_action, env.action_space.low, env.action_space.high)
+                residual_action = np.clip(
+                    action - prior_action, env.action_space.low, env.action_space.high
+                )
                 next_obs, reward, terminated, truncated, next_info = env.step(action)
                 done = bool(terminated or truncated)
                 metrics = {
@@ -144,14 +150,18 @@ def collect_expert_dataset(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="configs/default.yaml")
-    parser.add_argument("--out", default="datasets/expert/full_car_mpc_lite.npz")
-    parser.add_argument("--expert", default="FULL_CAR_MPC_LITE")
+    parser.add_argument("--config", default="configs/half_car_safe_ppo.yaml")
+    parser.add_argument("--out", default="datasets/expert/half_car_spdf.npz")
+    parser.add_argument("--expert", choices=["PID", "SPDF", "MPC"], type=str.upper, default="SPDF")
     parser.add_argument("--episodes", type=int, default=4)
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--residual-prior", default=None)
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--skip-unsafe", action="store_true", help="Drop expert transitions whose next state is marked unsafe.")
+    parser.add_argument(
+        "--skip-unsafe",
+        action="store_true",
+        help="Drop expert transitions whose next state is marked unsafe.",
+    )
     args = parser.parse_args()
     config_path = Path(args.config)
     if not config_path.is_absolute():

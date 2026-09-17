@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from config import half_car_dimensions
+
 from .networks import TransformerActor, TransformerCritic
 
 
@@ -38,13 +40,9 @@ class DDPGConfig:
         return self.obs_dim_base + self.preview_steps * self.preview_token_dim
 
     @classmethod
-    def from_project_config(cls, config: dict) -> "DDPGConfig":
+    def from_project_config(cls, config: dict) -> DDPGConfig:
         rl = config["rl"]
-        act_dim = int(rl.get("act_dim", 2))
-        history_cfg = dict(config.get("observation", {}).get("history", {}))
-        history_steps = int(history_cfg.get("steps", 0)) if history_cfg.get("enabled", False) else 0
-        action_obs_dim = act_dim if config.get("action_in_observation", False) else 0
-        obs_dim_base = 14 + action_obs_dim + history_steps * (14 + 2 * act_dim)
+        act_dim, _, obs_dim_base = half_car_dimensions(config)
         return cls(
             obs_dim_base=int(rl.get("obs_dim_base", obs_dim_base)),
             preview_steps=int(config["preview"]["steps"]),
@@ -126,7 +124,9 @@ class DDPGAgent:
         self._soft_update()
         return float(critic_loss.item()), float(actor_loss.item())
 
-    def pretrain_actor_bc(self, expert_replay, epochs: int, batch_size: int, max_steps_per_epoch: int | None = None):
+    def pretrain_actor_bc(
+        self, expert_replay, epochs: int, batch_size: int, max_steps_per_epoch: int | None = None
+    ):
         losses: list[float] = []
         if expert_replay is None or len(expert_replay) == 0 or epochs <= 0:
             return losses
@@ -150,7 +150,7 @@ class DDPGAgent:
 
     def _soft_update(self):
         for net, target in ((self.actor, self.actor_target), (self.critic, self.critic_target)):
-            for p, tp in zip(net.parameters(), target.parameters()):
+            for p, tp in zip(net.parameters(), target.parameters(), strict=True):
                 tp.data.copy_(self.cfg.tau * p.data + (1 - self.cfg.tau) * tp.data)
 
     def save(self, path: Path):

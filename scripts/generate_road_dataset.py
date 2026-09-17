@@ -15,13 +15,49 @@ if str(ROOT) not in sys.path:
 from config import load_config
 from roads.road_profiles import RoadProfileFactory
 
-
 DEFAULT_DATASET_SCENARIOS = [
-    {"name": "iso_b_22ms", "label": "ISO B 22 m/s", "type": "iso", "level": "B", "speed": 22.2222222222, "seed": 101},
-    {"name": "iso_c_8ms", "label": "ISO C 8.33 m/s", "type": "iso", "level": "C", "speed": 8.3333333333, "seed": 202},
-    {"name": "sine_long_18ms", "label": "Long Sine 18 m/s", "type": "sine", "speed": 18.0, "amplitude": 0.025, "wavelength": 5.0},
-    {"name": "bump_22ms", "label": "Bump 22 m/s", "type": "bump", "speed": 22.2222222222, "height": 0.1, "length": 0.25, "start_time": 0.6},
-    {"name": "pothole_16ms", "label": "Pothole 16 m/s", "type": "pothole", "speed": 16.0, "depth": 0.06, "length": 0.5, "start_time": 0.9},
+    {
+        "name": "iso_b_22ms",
+        "label": "ISO B 22 m/s",
+        "type": "iso",
+        "level": "B",
+        "speed": 22.2222222222,
+        "seed": 101,
+    },
+    {
+        "name": "iso_c_8ms",
+        "label": "ISO C 8.33 m/s",
+        "type": "iso",
+        "level": "C",
+        "speed": 8.3333333333,
+        "seed": 202,
+    },
+    {
+        "name": "sine_long_18ms",
+        "label": "Long Sine 18 m/s",
+        "type": "sine",
+        "speed": 18.0,
+        "amplitude": 0.025,
+        "wavelength": 5.0,
+    },
+    {
+        "name": "bump_22ms",
+        "label": "Bump 22 m/s",
+        "type": "bump",
+        "speed": 22.2222222222,
+        "height": 0.1,
+        "length": 0.25,
+        "start_time": 0.6,
+    },
+    {
+        "name": "pothole_16ms",
+        "label": "Pothole 16 m/s",
+        "type": "pothole",
+        "speed": 16.0,
+        "depth": 0.06,
+        "length": 0.5,
+        "start_time": 0.9,
+    },
     {
         "name": "mixed_18ms",
         "label": "Mixed 18 m/s",
@@ -50,9 +86,15 @@ def generate_dataset(
     for scenario in DEFAULT_DATASET_SCENARIOS:
         road = RoadProfileFactory.create(scenario, duration=duration, dt=dt)
         times = np.arange(0.0, duration + 0.5 * dt, dt)
-        heights = np.asarray([road.value(float(t)) for t in times], dtype=np.float64)
+        heights = road.values(times)
         csv_path = road_dir / f"{scenario['name']}.csv"
-        np.savetxt(csv_path, np.column_stack([times, heights]), delimiter=",", header="time,height", comments="")
+        np.savetxt(
+            csv_path,
+            np.column_stack([times, heights]),
+            delimiter=",",
+            header="time,height",
+            comments="",
+        )
         csv_scenario = {
             "name": scenario["name"],
             "label": scenario.get("label", scenario["name"]),
@@ -90,7 +132,7 @@ def generate_dataset(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="datasets/mujoco_roads")
+    parser.add_argument("--out", default="datasets/half_car_roads")
     parser.add_argument("--duration", type=float, default=8.0)
     parser.add_argument("--dt", type=float, default=0.001)
     parser.add_argument("--base-config", default=None)
@@ -98,7 +140,9 @@ def main():
     base_config = Path(args.base_config) if args.base_config else None
     if base_config is not None and not base_config.is_absolute():
         base_config = ROOT / base_config
-    manifest = generate_dataset(Path(args.out), duration=args.duration, dt=args.dt, base_config=base_config)
+    manifest = generate_dataset(
+        Path(args.out), duration=args.duration, dt=args.dt, base_config=base_config
+    )
     print(f"Generated {len(manifest['roads'])} roads under {Path(args.out).resolve()}")
     print(f"Evaluation config: {manifest['config']}")
 

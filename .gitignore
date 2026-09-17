@@ -12,3 +12,23 @@ __pycache__/
 *.fls
 *.fdb_latexmk
 *.xdv
+
+# Local environments, agent preferences, and generated artifacts.
+.venv/
+.ruff_cache/
+AGENTS.local.md
+tmp/
+tmp_*/
+tmp_*.pptx
+.conda_envs/
+.conda_pkgs/
+*.pt
+*.npz
+
+# Reproducible presentation previews, extraction output, and duplicate backups.
+projects/**/ppt_render_png/
+projects/**/validation/
+projects/**/backup/
+projects/**/confirm_ui/
+Thumbs.db
+.DS_Store

@@ -13,7 +13,9 @@ from visualization.animation import animate_half_car
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", required=True, help="Trajectory CSV from an evaluation result directory")
+    parser.add_argument(
+        "--csv", required=True, help="Trajectory CSV from an evaluation result directory"
+    )
     parser.add_argument("--out", default=None, help="Output .gif or video path")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--stride", type=int, default=2)

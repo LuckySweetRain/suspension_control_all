@@ -1,10 +1,19 @@
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+force-exclude = true
+extend-exclude = [
+    "tmp", "tmp_*", ".conda_envs", ".conda_pkgs", ".venv",
+    "results", "datasets", "logs", "projects", "carsim_mpc_quick",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501", "E741"]
+
+[tool.ruff.lint.per-file-ignores]
+# Standalone entry points insert the repository root before local imports.
+"scripts/*.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["config", "controllers", "envs", "experiments", "models", "rl", "roads", "visualization"]

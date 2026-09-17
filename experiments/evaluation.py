@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-from pathlib import Path
-from copy import deepcopy
 import json
+from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from config import apply_algorithm_overrides
 from controllers import MPCController, PIDController, RLTransformerController, SPDFController
 from controllers.prior import (
     adapt_action_to_env,
     compute_prior_action,
     make_prior_controller,
-    parameterize_policy_action,
-    policy_improvement_gate,
+    prepare_policy_action,
     residual_gate,
-    shield_policy_action,
     shield_residual_action,
 )
 from envs import HalfCarEnv
@@ -42,7 +41,9 @@ class RandomController:
 
     def compute_action(self, obs, info):
         if hasattr(self.env.action_space, "low") and hasattr(self.env.action_space, "high"):
-            return self.rng.uniform(self.env.action_space.low, self.env.action_space.high).astype(np.float32)
+            return self.rng.uniform(self.env.action_space.low, self.env.action_space.high).astype(
+                np.float32
+            )
         return self.env.action_space.sample()
 
 
@@ -108,21 +109,23 @@ class PolicySafetyController:
 
     def compute_action(self, obs, info):
         action = self.controller.compute_action(obs, info)
-        parameterized = parameterize_policy_action(action, self.env, info, self.action_parameterization_cfg)
-        parameterized, self.last_improvement_gate = policy_improvement_gate(
-            parameterized,
+        prepared = prepare_policy_action(
+            action,
             self.env,
+            obs,
             info,
-            self.improvement_gate_cfg,
+            {
+                "policy_action_parameterization": self.action_parameterization_cfg,
+                "policy_improvement_gate": self.improvement_gate_cfg,
+                "policy_safety": self.cfg,
+            },
         )
-        projected = shield_policy_action(parameterized, self.env, info, self.cfg)
-        self.last_raw_action = adapt_action_to_env(parameterized, self.env)
-        self.last_projected_action = adapt_action_to_env(projected, self.env)
-        delta = self.last_projected_action - self.last_raw_action
-        force_limit = max(float(getattr(self.env, "force_limit", 1.0)), 1e-6)
-        self.last_projection_delta_rms = float(np.sqrt(np.mean(np.square(delta))))
-        self.last_projection_error = float(self.last_projection_delta_rms / force_limit)
-        return projected
+        self.last_raw_action = prepared.unprojected_action.copy()
+        self.last_projected_action = prepared.action.copy()
+        self.last_improvement_gate = prepared.improvement_gate
+        self.last_projection_delta_rms = prepared.projection_delta_rms
+        self.last_projection_error = prepared.projection_error
+        return prepared.action
 
     def prior_action(self, obs, info):
         if self.has_prior_action and hasattr(self.controller, "prior_action"):
@@ -159,7 +162,9 @@ def make_controller(
     if key in {"bp_nmps", "neural_mpc_parameter", "mpc_parameter_policy"}:
         raise ValueError(f"Controller '{key}' is not supported in half-car mode.")
     if key in {"td3", "ddpg", "sac", "ppo", "rl"}:
-        rl = RLTransformerController(config, algorithm=algorithm or key, checkpoint=checkpoint)
+        rl = RLTransformerController(
+            config, algorithm=algorithm or ("td3" if key == "rl" else key), checkpoint=checkpoint
+        )
         residual_cfg = dict(config.get("residual_control", {}))
         if residual_cfg.get("enabled", False):
             prior = make_prior_controller(str(residual_cfg.get("prior", "spdf")), env, config)
@@ -179,7 +184,9 @@ def make_controller(
             or bool(improvement_gate_cfg.get("enabled", False))
         )
         if needs_wrap:
-            return PolicySafetyController(controller, env, policy_safety_cfg, action_param_cfg, improvement_gate_cfg)
+            return PolicySafetyController(
+                controller, env, policy_safety_cfg, action_param_cfg, improvement_gate_cfg
+            )
         return controller
     raise ValueError(f"Unknown controller: {name}")
 
@@ -194,34 +201,37 @@ def rollout(env: HalfCarEnv, controller, use_preview: bool) -> dict:
         action = controller.compute_action(obs_for_controller, info)
         step_action = action
         if getattr(controller, "has_prior_action", False):
-            step_action = {"action": action, "prior_action": controller.prior_action(obs_for_controller, info)}
+            step_action = {
+                "action": action,
+                "prior_action": controller.prior_action(obs_for_controller, info),
+            }
         obs, reward, terminated, truncated, info = env.step(step_action)
         d = info["derived"]
         state = info["state"]
         road = info["road"]
         executed_action = np.asarray(info.get("action", action), dtype=np.float64).reshape(-1)
         row = {
-                "time": info["time"],
-                "zb": state[0],
-                "dzb": state[1],
-                "theta": state[2],
-                "dtheta": state[3],
-                "zwf": state[4],
-                "zwr": state[6],
-                "zdf": road[0],
-                "zdr": road[2],
-                "ddzb": d["ddzb"],
-                "ddtheta": d["ddtheta"],
-                "delta_yf": d["delta_yf"],
-                "delta_yr": d["delta_yr"],
-                "Fpf": d["Fpf"],
-                "Fpr": d["Fpr"],
-                "Uaf": d.get("Uaf", executed_action[0]),
-                "Uar": d.get("Uar", executed_action[1] if len(executed_action) > 1 else 0.0),
-                "reward": reward,
-                "unsafe": int(info["unsafe"]),
-                "preview_used": int(use_preview),
-            }
+            "time": info["time"],
+            "zb": state[0],
+            "dzb": state[1],
+            "theta": state[2],
+            "dtheta": state[3],
+            "zwf": state[4],
+            "zwr": state[6],
+            "zdf": road[0],
+            "zdr": road[2],
+            "ddzb": d["ddzb"],
+            "ddtheta": d["ddtheta"],
+            "delta_yf": d["delta_yf"],
+            "delta_yr": d["delta_yr"],
+            "Fpf": d["Fpf"],
+            "Fpr": d["Fpr"],
+            "Uaf": d.get("Uaf", executed_action[0]),
+            "Uar": d.get("Uar", executed_action[1] if len(executed_action) > 1 else 0.0),
+            "reward": reward,
+            "unsafe": int(info["unsafe"]),
+            "preview_used": int(use_preview),
+        }
         if len(state) >= 14:
             row.update(
                 {
@@ -339,7 +349,9 @@ def compute_metrics(df: pd.DataFrame, settle_seconds: float = 1.0) -> dict:
             }[column]
             metrics[label] = float(view[column].mean())
     for column in [name for name in df.columns if name.startswith("reward_")]:
-        metrics[f"Mean{column.removeprefix('reward_').title().replace('_', '')}Penalty"] = float(view[column].mean())
+        metrics[f"Mean{column.removeprefix('reward_').title().replace('_', '')}Penalty"] = float(
+            view[column].mean()
+        )
     if "ddroll" in df.columns:
         metrics.update(
             {
@@ -366,7 +378,9 @@ def compute_metrics(df: pd.DataFrame, settle_seconds: float = 1.0) -> dict:
     return metrics
 
 
-def evaluate_all(config: dict, checkpoints: str | dict[str, str] | None, result_dir: Path) -> tuple[pd.DataFrame, dict]:
+def evaluate_all(
+    config: dict, checkpoints: str | dict[str, str] | None, result_dir: Path
+) -> tuple[pd.DataFrame, dict]:
     result_dir.mkdir(parents=True, exist_ok=True)
     with (result_dir / "evaluation_config.json").open("w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
@@ -374,39 +388,49 @@ def evaluate_all(config: dict, checkpoints: str | dict[str, str] | None, result_
         rl_checkpoints = {"td3": checkpoints}
     else:
         rl_checkpoints = checkpoints or {}
-    controllers = list(config.get("evaluation", {}).get("controllers", []))
+    controllers = list(
+        dict.fromkeys(name.upper() for name in config.get("evaluation", {}).get("controllers", []))
+    )
     if not controllers:
         engine = str(config.get("environment", {}).get("engine", "python")).lower()
         controllers = ["PASSIVE"] if engine != "python" else ["PID", "SPDF", "MPC"]
     controllers += [name.upper() for name in rl_checkpoints if name.upper() not in controllers]
+    for name in controllers:
+        key = "td3" if name == "RL" else name.lower()
+        if key in {"td3", "ddpg", "sac", "ppo"} and not rl_checkpoints.get(key):
+            raise ValueError(f"Evaluation of {name} requires a checkpoint")
     trajectories = {}
     environment_metadata = []
     rows = []
     for scenario in config["scenarios"]:
         for controller_name in controllers:
-            is_rl = controller_name.lower() in rl_checkpoints
+            key = "td3" if controller_name == "RL" else controller_name.lower()
+            is_rl = key in {"td3", "ddpg", "sac", "ppo"}
             use_preview = is_rl or controller_name.lower() in set(config["preview"]["enabled_for"])
-            controller_config = deepcopy(config)
-            env = make_env(controller_config, scenario=scenario, use_preview=use_preview)
-            algorithm = controller_name.lower() if is_rl else None
-            checkpoint = rl_checkpoints.get(algorithm) if algorithm else None
-            controller = make_controller(
-                controller_name,
-                env,
-                controller_config,
-                checkpoint=checkpoint,
-                algorithm=algorithm,
+            controller_config = (
+                apply_algorithm_overrides(config, key) if is_rl else deepcopy(config)
             )
-            run = rollout(env, controller, use_preview=use_preview)
-            if hasattr(env, "environment_metadata"):
-                environment_metadata.append(
-                    {
-                        "controller": controller_name,
-                        "scenario": scenario.get("name", ""),
-                        **env.environment_metadata(),
-                    }
+            env = make_env(controller_config, scenario=scenario, use_preview=use_preview)
+            algorithm = key if is_rl else None
+            checkpoint = rl_checkpoints.get(algorithm) if algorithm else None
+            try:
+                controller = make_controller(
+                    controller_name,
+                    env,
+                    controller_config,
+                    checkpoint=checkpoint,
+                    algorithm=algorithm,
                 )
-            if hasattr(env, "close"):
+                run = rollout(env, controller, use_preview=use_preview)
+                if hasattr(env, "environment_metadata"):
+                    environment_metadata.append(
+                        {
+                            "controller": controller_name,
+                            "scenario": scenario.get("name", ""),
+                            **env.environment_metadata(),
+                        }
+                    )
+            finally:
                 env.close()
             df = run["data"]
             key = f"{controller_name}_{scenario['name']}"

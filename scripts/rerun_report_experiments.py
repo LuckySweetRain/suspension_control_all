@@ -89,7 +89,11 @@ def make_controller(name: str, env: HalfCarEnv, config: dict, checkpoint: str | 
         safety_cfg = dict(config.get("policy_safety", {}))
         action_param_cfg = dict(config.get("policy_action_parameterization", {}))
         gate_cfg = dict(config.get("policy_improvement_gate", {}))
-        if safety_cfg.get("enabled", False) or action_param_cfg.get("enabled", False) or gate_cfg.get("enabled", False):
+        if (
+            safety_cfg.get("enabled", False)
+            or action_param_cfg.get("enabled", False)
+            or gate_cfg.get("enabled", False)
+        ):
             return PolicySafetyController(base, env, safety_cfg, action_param_cfg, gate_cfg)
         return base
     raise ValueError(f"Unknown controller: {name}")
@@ -217,7 +221,11 @@ def main():
         config_path = ROOT / config_path
     config = load_config(config_path)
     controllers = [item.strip() for item in args.controllers.split(",") if item.strip()]
-    out_dir = Path(args.out) if args.out else ROOT / "results" / datetime.now().strftime("%Y%m%d_%H%M%S_report_eval")
+    out_dir = (
+        Path(args.out)
+        if args.out
+        else ROOT / "results" / datetime.now().strftime("%Y%m%d_%H%M%S_report_eval")
+    )
     if not out_dir.is_absolute():
         out_dir = ROOT / out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -236,7 +244,9 @@ def main():
     for scenario in config["scenarios"]:
         for controller_name in controllers:
             controller_config = deepcopy(config)
-            use_preview = controller_name.lower() in set(config["preview"]["enabled_for"]) or controller_name.lower() in {
+            use_preview = controller_name.lower() in set(
+                config["preview"]["enabled_for"]
+            ) or controller_name.lower() in {
                 "mpc",
                 "ppo",
                 "si-rppo",

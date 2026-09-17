@@ -17,7 +17,6 @@ if str(ROOT) not in sys.path:
 from config import load_config
 from experiments.evaluation import compute_metrics, make_controller, make_env, rollout
 
-
 CLASSICAL_CONTROLLERS = ("PASSIVE", "PID", "SPDF", "MPC")
 
 
@@ -62,9 +61,12 @@ def _effective_obs_dim_base(config: dict) -> int:
 
 def _checkpoint_config_matches(run_config: dict, target_config: dict) -> bool:
     checks = [
-        int(run_config.get("preview", {}).get("steps", -1)) == int(target_config.get("preview", {}).get("steps", -2)),
-        float(run_config.get("preview", {}).get("dt", -1.0)) == float(target_config.get("preview", {}).get("dt", -2.0)),
-        bool(run_config.get("action_in_observation", False)) == bool(target_config.get("action_in_observation", False)),
+        int(run_config.get("preview", {}).get("steps", -1))
+        == int(target_config.get("preview", {}).get("steps", -2)),
+        float(run_config.get("preview", {}).get("dt", -1.0))
+        == float(target_config.get("preview", {}).get("dt", -2.0)),
+        bool(run_config.get("action_in_observation", False))
+        == bool(target_config.get("action_in_observation", False)),
         _effective_obs_dim_base(run_config) == _effective_obs_dim_base(target_config),
         bool(run_config.get("imitation", {}).get("enabled", False))
         == bool(target_config.get("imitation", {}).get("enabled", False)),
@@ -118,7 +120,14 @@ def _latest_checkpoint_for_config(config_name: str, target_config: dict) -> Path
         if not _checkpoint_config_matches(run_config, target_config):
             continue
         ckpt_dir = manifest_path.parent / "checkpoints"
-        for name in ("final.pt", "best.pt", "episode_400.pt", "episode_200.pt", "episode_150.pt", "episode_50.pt"):
+        for name in (
+            "final.pt",
+            "best.pt",
+            "episode_400.pt",
+            "episode_200.pt",
+            "episode_150.pt",
+            "episode_50.pt",
+        ):
             path = ckpt_dir / name
             if path.is_file():
                 candidates.append(path)
@@ -165,7 +174,9 @@ def _run_one(
         "ScenarioLabel": scenario.get("label", scenario["name"]),
         "PreviewUsed": bool(use_preview),
         "PreviewSteps": int(config["preview"]["steps"]) if use_preview else 0,
-        "PreviewDt_s": float(config["preview"].get("dt", config["control_dt"])) if use_preview else 0.0,
+        "PreviewDt_s": float(config["preview"].get("dt", config["control_dt"]))
+        if use_preview
+        else 0.0,
         "Engine": str(config.get("environment", {}).get("engine", "python")),
         **metrics,
     }
@@ -198,7 +209,9 @@ def evaluate_ch6(
 
     for scenario in base_config["scenarios"]:
         for controller_name in CLASSICAL_CONTROLLERS:
-            rows.append(_run_one(base_config, scenario, controller_name, controller_name, None, out_dir))
+            rows.append(
+                _run_one(base_config, scenario, controller_name, controller_name, None, out_dir)
+            )
         if ppo_checkpoint is not None:
             rows.append(_run_one(ppo_config, scenario, "ppo", "PPO", ppo_checkpoint, out_dir))
         if si_checkpoint is not None:
@@ -208,7 +221,9 @@ def evaluate_ch6(
     metrics_path = out_dir / "metrics.csv"
     metrics.to_csv(metrics_path, index=False)
     manifest["metric_columns"] = list(metrics.columns)
-    manifest["trajectory_files"] = sorted(p.name for p in out_dir.glob("*.csv") if p.name != "metrics.csv")
+    manifest["trajectory_files"] = sorted(
+        p.name for p in out_dir.glob("*.csv") if p.name != "metrics.csv"
+    )
     with (out_dir / "evaluation_manifest.json").open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 
@@ -244,7 +259,11 @@ def main() -> None:
     )
     ppo_checkpoint = _validate_checkpoint_config(ppo_checkpoint, ppo_config, "PPO")
     si_checkpoint = _validate_checkpoint_config(si_checkpoint, si_config, "SI-RPPO")
-    out_dir = Path(args.out) if args.out else ROOT / "results" / datetime.now().strftime("%Y%m%d_%H%M%S_ch6_unified")
+    out_dir = (
+        Path(args.out)
+        if args.out
+        else ROOT / "results" / datetime.now().strftime("%Y%m%d_%H%M%S_ch6_unified")
+    )
     if not out_dir.is_absolute():
         out_dir = ROOT / out_dir
 

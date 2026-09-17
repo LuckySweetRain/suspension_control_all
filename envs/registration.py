@@ -14,7 +14,9 @@ GYM_IDS = {
 }
 
 
-def _resolve_config(config: dict[str, Any] | None = None, config_path: str | Path | None = None) -> dict[str, Any]:
+def _resolve_config(
+    config: dict[str, Any] | None = None, config_path: str | Path | None = None
+) -> dict[str, Any]:
     if config is not None:
         return deepcopy(config)
     if config_path is None:
@@ -56,7 +58,9 @@ def make_half_car_env(
     cfg = _resolve_config(config=config, config_path=config_path)
     return HalfCarEnv(
         cfg,
-        scenario=_resolve_scenario(cfg, scenario=scenario, scenario_index=scenario_index, scenario_name=scenario_name),
+        scenario=_resolve_scenario(
+            cfg, scenario=scenario, scenario_index=scenario_index, scenario_name=scenario_name
+        ),
         use_preview=use_preview,
     )
 

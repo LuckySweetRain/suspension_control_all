@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -24,8 +26,19 @@ def check_registration(config_path: Path | None = None, smoke: bool = False) -> 
         env = gym.make(GYM_IDS["half_car"], scenario_index=0, use_preview=True, **kwargs)
         try:
             obs, info = env.reset(seed=42)
+            env.action_space.seed(42)
             action = env.action_space.sample()
             next_obs, reward, terminated, truncated, step_info = env.step(action)
+            if not (
+                env.observation_space.contains(obs) and env.observation_space.contains(next_obs)
+            ):
+                raise ValueError("Environment observations do not match observation_space")
+            if not (
+                np.all(np.isfinite(obs)) and np.all(np.isfinite(next_obs)) and np.isfinite(reward)
+            ):
+                raise ValueError(
+                    "Environment smoke check produced non-finite observations or reward"
+                )
             report["smoke"] = {
                 "obs_shape": list(obs.shape),
                 "next_obs_shape": list(next_obs.shape),
@@ -34,6 +47,7 @@ def check_registration(config_path: Path | None = None, smoke: bool = False) -> 
                 "terminated": bool(terminated),
                 "truncated": bool(truncated),
                 "engine": step_info.get("engine", info.get("engine", "")),
+                "finite": True,
             }
         finally:
             env.close()

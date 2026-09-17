@@ -7,7 +7,6 @@ from typing import Literal
 
 import numpy as np
 
-
 BackendName = Literal["chrono", "rk4"]
 
 
@@ -23,7 +22,9 @@ class QuarterCarParams:
     force_rate_limit_nps: float = 20_000.0
 
 
-def sinusoidal_bump(t: float, start: float = 0.6, duration: float = 0.35, height: float = 0.04) -> tuple[float, float]:
+def sinusoidal_bump(
+    t: float, start: float = 0.6, duration: float = 0.35, height: float = 0.04
+) -> tuple[float, float]:
     """Smooth bump road profile and its velocity."""
     if t < start or t > start + duration:
         return 0.0, 0.0
@@ -36,7 +37,12 @@ def sinusoidal_bump(t: float, start: float = 0.6, duration: float = 0.35, height
 class QuarterCarActiveController:
     """Simple skyhook-plus-groundhook active controller with actuator limits."""
 
-    def __init__(self, params: QuarterCarParams, skyhook_gain: float = -3_000.0, groundhook_gain: float = 300.0):
+    def __init__(
+        self,
+        params: QuarterCarParams,
+        skyhook_gain: float = -3_000.0,
+        groundhook_gain: float = 300.0,
+    ):
         self.params = params
         self.skyhook_gain = float(skyhook_gain)
         self.groundhook_gain = float(groundhook_gain)
@@ -66,11 +72,17 @@ class QuarterCarRK4Backend:
         self.state[:] = 0.0
         return self.state.copy()
 
-    def _deriv(self, state: np.ndarray, active_force: float, road: float, road_dot: float) -> np.ndarray:
+    def _deriv(
+        self, state: np.ndarray, active_force: float, road: float, road_dot: float
+    ) -> np.ndarray:
         p = self.params
         z_s, z_s_dot, z_u, z_u_dot = state
-        susp_force = p.suspension_stiffness_npm * (z_s - z_u) + p.suspension_damping_nspm * (z_s_dot - z_u_dot)
-        tire_force = p.tire_stiffness_npm * (z_u - road) + p.tire_damping_nspm * (z_u_dot - road_dot)
+        susp_force = p.suspension_stiffness_npm * (z_s - z_u) + p.suspension_damping_nspm * (
+            z_s_dot - z_u_dot
+        )
+        tire_force = p.tire_stiffness_npm * (z_u - road) + p.tire_damping_nspm * (
+            z_u_dot - road_dot
+        )
         z_s_ddot = (-susp_force - active_force) / p.sprung_mass_kg
         z_u_ddot = (susp_force + active_force - tire_force) / p.unsprung_mass_kg
         return np.array([z_s_dot, z_s_ddot, z_u_dot, z_u_ddot], dtype=np.float64)
@@ -156,7 +168,9 @@ class QuarterCarChronoBackend:
         )
         self.tire.SetSpringCoefficient(p.tire_stiffness_npm)
         self.tire.SetDampingCoefficient(p.tire_damping_nspm)
-        tire_static_compression = (p.sprung_mass_kg + p.unsprung_mass_kg) * 9.81 / p.tire_stiffness_npm
+        tire_static_compression = (
+            (p.sprung_mass_kg + p.unsprung_mass_kg) * 9.81 / p.tire_stiffness_npm
+        )
         self.tire.SetRestLength(self.tire_free_length + tire_static_compression)
         self.system.AddLink(self.tire)
 
@@ -191,18 +205,29 @@ class QuarterCarChronoBackend:
 class ChronoQuarterCarEnv:
     """Minimal active-suspension rollout wrapper for Chrono or RK4 backends."""
 
-    def __init__(self, params: QuarterCarParams | None = None, dt: float = 0.001, backend: BackendName = "rk4"):
+    def __init__(
+        self,
+        params: QuarterCarParams | None = None,
+        dt: float = 0.001,
+        backend: BackendName = "rk4",
+    ):
         self.params = params or QuarterCarParams()
         self.dt = float(dt)
         self.backend_name = backend
-        self.backend = QuarterCarChronoBackend(self.params, self.dt) if backend == "chrono" else QuarterCarRK4Backend(self.params, self.dt)
+        self.backend = (
+            QuarterCarChronoBackend(self.params, self.dt)
+            if backend == "chrono"
+            else QuarterCarRK4Backend(self.params, self.dt)
+        )
         self.controller = QuarterCarActiveController(self.params)
 
     def reset(self) -> np.ndarray:
         self.controller.reset()
         return self.backend.reset()
 
-    def rollout(self, duration: float = 2.0, controller: Literal["passive", "active"] = "passive") -> dict:
+    def rollout(
+        self, duration: float = 2.0, controller: Literal["passive", "active"] = "passive"
+    ) -> dict:
         steps = int(round(duration / self.dt))
         state = self.reset()
         rows = []
@@ -229,7 +254,12 @@ class ChronoQuarterCarEnv:
                     "active_force_delta_n": force_delta,
                 }
             )
-        return {"backend": self.backend_name, "controller": controller, "rows": rows, "metrics": self._metrics(rows)}
+        return {
+            "backend": self.backend_name,
+            "controller": controller,
+            "rows": rows,
+            "metrics": self._metrics(rows),
+        }
 
     def _metrics(self, rows: list[dict]) -> dict:
         body_v = np.asarray([r["body_v_mps"] for r in rows], dtype=np.float64)

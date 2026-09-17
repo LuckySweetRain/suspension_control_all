@@ -5,14 +5,21 @@ from typing import Any
 
 import numpy as np
 
-from .base import Controller, split_generalized_force
 from models.half_car import HalfCarParams
+
+from .base import Controller, split_generalized_force
 
 
 class SPDFController(Controller):
     name = "SPDF"
 
-    def __init__(self, params: HalfCarParams, dt: float, period: float = 1.0, config: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        params: HalfCarParams,
+        dt: float,
+        period: float = 1.0,
+        config: dict[str, Any] | None = None,
+    ):
         self.p = params
         self.dt = dt
         self.period = period
@@ -28,13 +35,17 @@ class SPDFController(Controller):
         ref_cfg = dict(spdf_cfg.get("preview_reference", {}))
         safety_cfg = dict(full_config.get("safety_limits", {}))
         max_suspension = max(
-            float(ref_cfg.get("max_suspension_travel", safety_cfg.get("max_suspension_travel", 0.08))),
+            float(
+                ref_cfg.get("max_suspension_travel", safety_cfg.get("max_suspension_travel", 0.08))
+            ),
             1e-9,
         )
         stroke_fraction = float(ref_cfg.get("stroke_fraction", 0.35))
         stroke_default = max_suspension * stroke_fraction
         self.uses_preview = bool(ref_cfg.get("enabled", False))
-        self.ref_stroke_limit = float(np.clip(ref_cfg.get("stroke_limit", stroke_default), 1e-9, max_suspension))
+        self.ref_stroke_limit = float(
+            np.clip(ref_cfg.get("stroke_limit", stroke_default), 1e-9, max_suspension)
+        )
         self.ref_lookahead_steps = max(1, int(ref_cfg.get("lookahead_steps", 10)))
         self.ref_peak_blend = float(np.clip(ref_cfg.get("peak_blend", 0.75), 0.0, 1.0))
         self.ref_body_kp = max(float(ref_cfg.get("body_kp", 25.0)), 0.0)
@@ -96,15 +107,31 @@ class SPDFController(Controller):
         delta_g1 = (p.mb_max - p.mb) / p.mb_min
         delta_g2 = (p.Ip_max - p.Ip) / p.Ip_min
 
-        ub0 = -self.a1 / (2 * (1 - self.tau1)) * s1 - self._k_ah(t, self.a1) / (2 * (1 - self.tau1)) * np.sign(s1) * abs(s1) ** (2 * self.tau1 - 1) * abs(s1_h) ** (2 - 2 * self.tau1)
-        base1 = -2 / np.pi * ro1 * np.arctan(ro1 * s1 / self.eps) - self.a1 * de1 - dk1 * e1_h - k1 * de1_h + ub0
+        ub0 = -self.a1 / (2 * (1 - self.tau1)) * s1 - self._k_ah(t, self.a1) / (
+            2 * (1 - self.tau1)
+        ) * np.sign(s1) * abs(s1) ** (2 * self.tau1 - 1) * abs(s1_h) ** (2 - 2 * self.tau1)
+        base1 = (
+            -2 / np.pi * ro1 * np.arctan(ro1 * s1 / self.eps)
+            - self.a1 * de1
+            - dk1 * e1_h
+            - k1 * de1_h
+            + ub0
+        )
         gamma1 = 1 / (1 - delta_g1) * delta_g1 * abs(base1)
         vb0 = -2 / np.pi * gamma1 * np.arctan(gamma1 * s1 / self.eps)
         vb = p.mb * (ref["ddz"] + base1 + vb0)
         ub = vb + f1
 
-        utheta0 = -self.a2 / (2 * (1 - self.tau2)) * s2 - self._k_ah(t, self.a2) / (2 * (1 - self.tau2)) * np.sign(s2) * abs(s2) ** (2 * self.tau2 - 1) * abs(s2_h) ** (2 - 2 * self.tau2)
-        base2 = -2 / np.pi * ro2 * np.arctan(ro2 * s2 / self.eps) - self.a2 * de2 - dk2 * e2_h - k2 * de2_h + utheta0
+        utheta0 = -self.a2 / (2 * (1 - self.tau2)) * s2 - self._k_ah(t, self.a2) / (
+            2 * (1 - self.tau2)
+        ) * np.sign(s2) * abs(s2) ** (2 * self.tau2 - 1) * abs(s2_h) ** (2 - 2 * self.tau2)
+        base2 = (
+            -2 / np.pi * ro2 * np.arctan(ro2 * s2 / self.eps)
+            - self.a2 * de2
+            - dk2 * e2_h
+            - k2 * de2_h
+            + utheta0
+        )
         gamma2 = 1 / (1 - delta_g2) * delta_g2 * abs(base2)
         vtheta0 = -2 / np.pi * gamma2 * np.arctan(gamma2 * s2 / self.eps)
         vtheta = p.Ip * (ref["ddtheta"] + base2 + vtheta0)
@@ -145,7 +172,9 @@ class SPDFController(Controller):
     def _preview_command(self, info: dict) -> tuple[float, float]:
         p = self.p
         road_now = np.asarray(info.get("road", np.zeros(4)), dtype=np.float64).reshape(-1)
-        current = np.asarray([[road_now[0] if road_now.size > 0 else 0.0, road_now[2] if road_now.size > 2 else 0.0]])
+        current = np.asarray(
+            [[road_now[0] if road_now.size > 0 else 0.0, road_now[2] if road_now.size > 2 else 0.0]]
+        )
         preview = np.asarray(info.get("road_preview", np.empty((0, 2))), dtype=np.float64)
         if preview.size == 0:
             road_heights = current
@@ -220,24 +249,77 @@ class SPDFController(Controller):
         t1 = t % (2 * self.h)
         if t1 < self.h:
             return 0.0
-        return float((4 * a * np.sin(np.pi * t1 / self.h) ** 2 * np.exp(-a * (3 * self.h - 2 * t1)) * (a**2 * self.h**2 + np.pi**2)) / (np.pi**2 * (np.exp(2 * a * self.h) - 1)))
+        return float(
+            (
+                4
+                * a
+                * np.sin(np.pi * t1 / self.h) ** 2
+                * np.exp(-a * (3 * self.h - 2 * t1))
+                * (a**2 * self.h**2 + np.pi**2)
+            )
+            / (np.pi**2 * (np.exp(2 * a * self.h) - 1))
+        )
 
     def _f1(self, d: dict) -> float:
         p = self.p
         dyf, ddyf, dyr, ddyr = d["delta_yf"], d["delta_dyf"], d["delta_yr"], d["delta_dyr"]
-        return p.kf1 * dyf + p.knf1 * dyf**3 + p.kr1 * dyr + p.knr1 * dyr**3 + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyf)) * ddyf + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyr)) * ddyr
+        return (
+            p.kf1 * dyf
+            + p.knf1 * dyf**3
+            + p.kr1 * dyr
+            + p.knr1 * dyr**3
+            + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyf)) * ddyf
+            + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyr)) * ddyr
+        )
 
     def _f2(self, d: dict) -> float:
         p = self.p
         dyf, ddyf, dyr, ddyr = d["delta_yf"], d["delta_dyf"], d["delta_yr"], d["delta_dyr"]
-        return p.a * (p.kf1 * dyf + p.knf1 * dyf**3 + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyf)) * ddyf) - p.b * (p.kr1 * dyr + p.knr1 * dyr**3 + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyr)) * ddyr)
+        return p.a * (
+            p.kf1 * dyf
+            + p.knf1 * dyf**3
+            + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyf)) * ddyf
+        ) - p.b * (
+            p.kr1 * dyr
+            + p.knr1 * dyr**3
+            + 0.5 * ((p.be + p.bc) + (p.be - p.bc) * np.sign(ddyr)) * ddyr
+        )
 
     def _ro1(self, d: dict) -> float:
         p = self.p
         dyf, ddyf, dyr, ddyr = d["delta_yf"], d["delta_dyf"], d["delta_yr"], d["delta_dyr"]
-        return 1 / p.mb_min * (abs(p.delta_kf1 * dyf) + abs(p.delta_knf1 * dyf**3) + abs(max(p.delta_be, p.delta_bc) * ddyf) + abs(p.delta_kr1 * dyr) + abs(p.delta_knr1 * dyr**3) + abs(max(p.delta_be, p.delta_bc) * ddyr))
+        return (
+            1
+            / p.mb_min
+            * (
+                abs(p.delta_kf1 * dyf)
+                + abs(p.delta_knf1 * dyf**3)
+                + abs(max(p.delta_be, p.delta_bc) * ddyf)
+                + abs(p.delta_kr1 * dyr)
+                + abs(p.delta_knr1 * dyr**3)
+                + abs(max(p.delta_be, p.delta_bc) * ddyr)
+            )
+        )
 
     def _ro2(self, d: dict) -> float:
         p = self.p
         dyf, ddyf, dyr, ddyr = d["delta_yf"], d["delta_dyf"], d["delta_yr"], d["delta_dyr"]
-        return 1 / p.Ip_min * ((p.a + p.delta_ab) * (abs(p.delta_kf1 * dyf) + abs(p.delta_knf1 * dyf**3) + abs(max(p.delta_be, p.delta_bc) * ddyf)) + (p.b + p.delta_ab) * (abs(p.delta_kr1 * dyr) + abs(p.delta_knr1 * dyr**3) + abs(max(p.delta_be, p.delta_bc) * ddyr)) + p.delta_ab * abs(self._f1(d)))
+        return (
+            1
+            / p.Ip_min
+            * (
+                (p.a + p.delta_ab)
+                * (
+                    abs(p.delta_kf1 * dyf)
+                    + abs(p.delta_knf1 * dyf**3)
+                    + abs(max(p.delta_be, p.delta_bc) * ddyf)
+                )
+                + (p.b + p.delta_ab)
+                * (
+                    abs(p.delta_kr1 * dyr)
+                    + abs(p.delta_knr1 * dyr**3)
+                    + abs(max(p.delta_be, p.delta_bc) * ddyr)
+                )
+                + p.delta_ab * abs(self._f1(d))
+            )
+        )
