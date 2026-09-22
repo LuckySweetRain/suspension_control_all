@@ -1,0 +1,105 @@
+# 本机验收记录
+
+环境：Windows，i5-14600KF，约32 GiB内存，独立Conda环境 `chrono-rl`。
+本轮使用CPU版PyTorch；没有把GPU学习或GPU车辆物理标记为已验收。
+所有命令从外层仓库根目录、激活该环境后执行。未运行pytest。
+最终矩阵完成时间为北京时间2026年9月23日；目录中的20260922采用运行开始的UTC日期。
+
+## 动力学和接口
+
+`python chrono/scripts/check_model.py` 的15项检查全部通过，包括：
+
+- 30个速度坐标、23个约束，严格7个机械自由度。
+- 10秒静平衡、左右对称激励、单侧激励、主动作用力方向。
+- 执行器时延、力/变化率限幅，瞬时功率与目标功率降额的区别。
+- 单边轮胎接触、精确轴距时延、随机种子复现、重复清理。
+- 基于Chrono实际端点和力回调的完整静态刚度/阻尼/输入雅可比核验。
+- 1ms与0.5ms步长比较、JSON渲染帧、两种观测下Gymnasium/SB3检查。
+- 低安装高度的参数校验及真实悬架端点穿越回归。
+
+详细证据：外层 `results/chrono/validation/check_model_final.json`。
+三秒被动凸包检查中，步长减半的车身加速度RMS相对差约0.4%；这不是所有
+高幅值路面和饱和控制下的统一误差保证。Gymnasium关于无限观测边界的提示仍保留，
+训练通过VecNormalize处理不同信号尺度。
+
+## 原生窗口与基线
+
+Irrlicht实际窗口、Tk原生控制面板、暂停/倍速/视角/外壳切换、201帧轨迹记录
+及回放已在本机运行。独立渲染系统不会改变被控对象的状态。
+截图及JSONL位于 `results/chrono/visualization/`。
+
+原生窗口还实际加载了 `final_matrix_20260922` 中的 SAC 传感器策略
+（seed 42，8192步），恢复相同观测归一化后完成0.64秒单侧凸包推理与渲染。
+证据为 `results/chrono/visualization/rl_policy_final.png` 及同名JSONL，
+其中保存65帧真实状态；这项检查证明策略与原生画面接通，不代表策略已收敛。
+
+被动、Skyhook与LQR分别完成20个固定测试case，共60个完整回合，未触发提前终止。
+这不表示没有瞬时轮胎卸载，也不表示主动控制已经调优。
+
+| 控制器 | 20个case的加速度RMS平均值 m/s² | 轮胎卸载比例的case均值 |
+|---|---:|---:|
+| 被动 | 0.34225 | 0.1070% |
+| Skyhook | 0.37308 | 0.1100% |
+| LQR | 0.35122 | 0.1065% |
+
+这里是各case指标的等权平均，包含平路；不是把全部信号拼接后计算的RMS。
+原始case结果位于 `results/chrono/evaluation/acceptance_*_20260922/`。
+基线系数未按测试集调参，不能从这些初始结果推断任何算法的最佳性能。
+
+## 强化学习与依赖
+
+PPO传感器模式使用2个spawn进程，SAC完整状态模式使用1个进程，均实际完成
+2048→4096步的训练与恢复。检查覆盖SAC梯度更新与回放恢复、归一化统计、
+优化器状态、40步策略推理以及有限值/动作边界。
+证据：`results/chrono/checks/rl_runtime_smoke/smoke.json`。
+
+`python chrono/scripts/benchmark.py --vector-steps 2000 --name final_workers_20260922`
+实际测得：
+
+| 独立环境进程 | 总控制步/秒 | 启动秒数 |
+|---|---:|---:|
+| 1 | 429.6 | 1.63 |
+| 2 | 733.5 | 1.73 |
+| 4 | 1458.5 | 1.80 |
+| 8 | 1442.2 | 2.19 |
+
+默认控制周期为10ms、每控制步包含10个物理步。上表为纯采样吞吐，不含网络学习。
+按峰值95%以内优先较少进程的规则，推荐4个进程；不是宣称8进程总是更快。
+结果保存在 `results/chrono/benchmarks/final_workers_20260922/benchmark.json`。
+
+真实硬预算测试已确认实验父进程及其两个Chrono子进程均可被清理，CLI的1.8秒
+截止测试保留了12个未完成训练组和15个未完成评估控制器清单。
+证据：`results/chrono/checks/watchdog_runtime_smoke.json`。
+
+`python -m pip check` 通过，开发安装后已在仓库外验证Python API导入。
+Conda与pip精确包记录保存在 `results/chrono/validation/`。
+外层 `python scripts/check_project.py` 全部通过，原半车项目未被替换。
+
+## 最终短程实验矩阵
+
+实际执行：
+
+```powershell
+python chrono/scripts/run_experiments.py --name final_matrix_20260922 --budget-hours 1 --max-steps 8192 --workers 4 --pilot-steps 2048
+python chrono/scripts/report.py --experiment final_matrix_20260922
+```
+
+PPO/SAC × privileged/sensors × seed 42/43/44，共12组，均完成8192个累计环境步，
+统一加载该步数的完整检查点。3个基线与12个策略各完成20个固定测试case，
+共300个完整回合，0个提前终止、0个未完成。实验状态为 `finished`，计入预算约
+1038.7秒（17.3分钟），没有超出1小时短训预算，也没有运行满24小时。
+原始检查点、逐case记录及汇总位于
+`results/chrono/experiments/final_matrix_20260922/`，报告为 `report.md`、`report.csv`。
+
+本轮全部RL策略的case平均车身加速度RMS均高于被动基线：被动约0.342 m/s²，
+RL约0.385～1.048 m/s²，因此没有证明舒适性提升或训练收敛。
+6个SAC策略均至少在一个测试case超过90mm设计行程，最大约117.2mm；
+所有控制器都出现过瞬时轮胎卸载。“完成”仅表示跑满全时程、未触发数值或物理包络
+终止，不等于满足约束。设计行程进入奖励惩罚，行程的提前终止阈值为其2倍；
+悬架安装端点穿越和其他异常另有终止条件。不得只看0个终止就声称安全达标。
+
+较早的 `acceptance_matrix_20260922` 在几何适用域审查后被主动停止并标记为
+`superseded`；该运行不用于最终结果。上面的完整矩阵已使用最终几何检查重新执行。
+
+批量矩阵、预算和报告入口见 `training.md`。短训只证明流程可用，
+不能证明策略收敛、实车安全或模型比CarSim更准确。参数标定边界见 `parameter_sources.md`。

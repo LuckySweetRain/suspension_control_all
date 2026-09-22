@@ -1,0 +1,16 @@
+name: chrono-rl
+channels:
+  - projectchrono/label/release
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  # Official Windows build includes Irrlicht. The conda-forge core build does not.
+  - pychrono=10.0.0=py312h418371c_0
+  - numpy=2.3.5
+  - scipy
+  - pyyaml=6.0.3
+  - pip
+  - pip:
+      - -r requirements.txt
+      - -r requirements-dev.txt
