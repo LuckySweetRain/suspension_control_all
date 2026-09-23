@@ -14,6 +14,7 @@ import numpy as np
 import pychrono as ch
 
 from .roads import FourWheelRoad
+from .terrain import RoadTerrain
 
 
 def vector(v) -> np.ndarray:
@@ -54,6 +55,7 @@ class TireForce(ch.ForceFunctor):
 class SevenDOFModel:
     def __init__(self, config: dict, road: FourWheelRoad):
         self.config, self.road = config, road
+        self.terrain = RoadTerrain(road, config)
         p, v, a = config["physics"], config["vehicle"], config["actuator"]
         self.dt = float(p["dt"])
         self.radius = float(v["tire_radius_m"])
@@ -163,7 +165,7 @@ class SevenDOFModel:
     def road_sample(self, time: float) -> tuple[np.ndarray, np.ndarray]:
         if self._road_cache_time != time:
             self._road_cache_time = time
-            self._road_cache_value = self.road.sample(time)
+            self._road_cache_value = self.terrain.sample_wheels(time)
         return self._road_cache_value
 
     @property
@@ -253,3 +255,4 @@ class SevenDOFModel:
         self.tires.clear()
         self.wheels.clear()
         self.constraints.clear()
+        self.terrain.clear_cache()

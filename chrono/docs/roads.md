@@ -1,7 +1,8 @@
 # 七类道路与四轮激励
 
-道路在空间中定义，再用车速转换成时间输入，向七自由度车辆提供四个轮下高度和速度。
-当前是轮迹高程模型；原生窗口的四块平台显示真实输入，没有添加额外碰撞或任意路径行驶自由度。
+道路在空间中定义，通过 `RoadTerrain(pychrono.vehicle.ChTerrain)` 提供连续高程、表面点和法线，
+再按给定车速采样四轮路径。轮胎力与原生连续道路网格使用同一个高程模型。
+七自由度与垂向轮胎本构保持不变；地形坐标、横向插值及网格精度见 [Chrono地形](terrain.md)。
 
 ## 七类预设
 
@@ -80,6 +81,7 @@ python chrono/scripts/view.py --controller passive --scenario iso_c --hold
 python chrono/scripts/view.py --controller skyhook --config chrono/configs/roads/composite.yaml --hold
 python chrono/scripts/preview_roads.py --output-dir results/chrono/road_preview/my_seven_roads
 python chrono/scripts/check_roads.py --with-env
+python chrono/scripts/check_terrain.py --with-vector
 ```
 
 预览导出总览、各类局部放大图、理论PSD图（PNG/PDF）、四轮高度/速度CSV和元数据，

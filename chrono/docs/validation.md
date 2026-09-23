@@ -5,6 +5,41 @@
 所有命令从外层仓库根目录、激活该环境后执行。未运行pytest。
 最终矩阵完成时间为北京时间2026年9月23日；目录中的20260922采用运行开始的UTC日期。
 
+## Chrono连续地形：2026年9月23日
+
+在七类道路扩展基础上接入 `RoadTerrain(ChTerrain)` 和连续原生三角网格，保持严格七自由度。
+实现及限制见 [Chrono地形](terrain.md)。实际执行：
+
+- `python chrono/scripts/check_terrain.py --with-vector`：5组通过。
+  证据 `results/chrono/terrain/checks_20260923T015858109790Z.json`。
+  覆盖七类及旧random的元数据重建、空间采样和解析导数、原生C++ `GetProperties`
+  经SWIG director查询、表面点/单位法线、不同前后轮距以及真实双spawn进程。
+  重建与四轮激励误差均为0；两种观测分别为 `(2,58)` 和 `(2,130)`，自动重置、有限值
+  和子进程退出检查通过。静态及移动道路仍为30个速度坐标、23个约束、7个机械自由度。
+- `python chrono/scripts/check_model.py`：原15项物理与Gym接口检查通过。
+  证据 `results/chrono/validation/check_model_20260923T015154945826Z.json`。
+- 原生窗口实际验收连续叠加路面、阶跃近景和缺少道路元数据的旧记录降级显示。
+  `results/chrono/terrain/native_road_validation.json` 记录：所有6个视觉刚体固定且关闭碰撞，
+  渲染前后模型状态差为0、时刻不变；抽查1443个实际网格顶点，高程差不超过1.74e-18m
+  （标线扣除1mm偏置）。三角形内部仍是离散近似，不能据此宣称任意点完全相等。
+  10秒道路含标线116574个三角形，本次窗口初始化约1.82秒；此值不是RL吞吐。
+- `python chrono/scripts/view.py --controller skyhook --scenario composite --duration 2.1 --camera road --speed 4 --screenshot results/chrono/terrain/live_continuous_road.png --record results/chrono/terrain/live_continuous_road.jsonl`：
+  完成2.1秒、211帧真实状态记录，保存连续道路截图。
+  同时实际回放已有的 `results/chrono/visualization/composite_road_20260923.jsonl`，
+  输出 `results/chrono/terrain/replay_continuous_road.png`。
+- 回放入口预检5项通过：原记录通过；前后轴位置偏移（保持总轴距）、前/后半轮距变化、
+  单帧高程篡改均在创建窗口前被拒绝。
+  证据 `results/chrono/terrain/replay_preflight_checks.json`。
+- 外层 `python scripts/check_project.py` 全部通过：
+  `results/project_checks/20260923_095632_779851/report.json`。
+  `python -m ruff check chrono`、`python -m ruff format --check chrono` 通过。
+
+首轮地形检查错误地要求Irrlicht模块完全不被导入；失败报告
+`results/chrono/terrain/checks_20260923T015619244930Z.json` 保留。
+查明本机官方包装器自动导入Irrlicht后，检查改为拦截可视系统和网格构造器、验证
+`viewer is None` 及不加载本项目渲染模块，修正后的完整检查已通过。
+本轮没有重跑长期RL训练或吞吐对比；下方旧基准不包含新增地形查询的开销。
+
 ## 七类道路扩展：2026年9月23日
 
 新增B/C目标谱、有限上升沿阶跃、叠加输入及七类预设，并接入单类/每回合随机选类训练、
@@ -13,7 +48,7 @@
 实际执行与证据：
 
 - `python chrono/scripts/check_roads.py --with-env`：最终12项全部通过。
-  报告 `results/chrono/roads/checks_20260923T013918017742Z.json` 的源文件哈希与最终道路代码一致。
+  报告 `results/chrono/roads/checks_20260923T013918017742Z.json` 保存该次道路扩展提交的源文件哈希。
   覆盖解析导数、前后延迟、单侧轮迹、阶跃端点和积分、叠加与单次渐入、复现、
   固定评估预设隔离、PSD积分、2048种子集合统计、旧版兼容、非法参数、Gym和七类10秒仿真。
 - 默认B级目标集合RMS为5.6285mm，2048种子实测左右误差均小于1%；目标相关系数

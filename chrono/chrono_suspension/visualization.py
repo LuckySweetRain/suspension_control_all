@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 CORNER_NAMES = ("FL", "FR", "RL", "RR")
+CAMERA_NAMES = ("iso", "side", "front", "top", "road")
 RESULTS_ROOT = Path(__file__).resolve().parents[2] / "results"
 
 
@@ -58,24 +59,55 @@ def validate_frame(frame: dict[str, Any]) -> None:
 class NativeViewer:
     """Render export_frame() dictionaries in a native Chrono Irrlicht window.
 
-    ``model`` is accepted for the live environment API, but never advanced or
-    modified. Replay passes ``None`` and uses exactly the same rendering path.
+    Live viewing uses ``model.road`` without advancing or modifying the model.
+    Replay passes ``None`` and an exactly reconstructed ``road``. Without a
+    spatial road, legacy replay explicitly falls back to recorded contact pads.
     ``config`` is the fully resolved simulation config with an optional
     ``visualization`` mapping (width, height, cutaway, speed, camera).
     """
 
-    def __init__(self, model: Any, config: dict[str, Any]) -> None:
-        del model
+    def __init__(
+        self,
+        model: Any,
+        config: dict[str, Any],
+        *,
+        road: Any = None,
+        time_range_s: tuple[float, float] | None = None,
+    ) -> None:
         try:
             self.chrono = importlib.import_module("pychrono")
             self.irr = importlib.import_module("pychrono.irrlicht")
         except ImportError as exc:
             raise RuntimeError(
                 "Native viewing requires a PyChrono build containing pychrono.irrlicht. "
-                "Activate the documented chrono-rl environment. Headless simulation "
-                "and training do not require Irrlicht."
+                "Activate the documented chrono-rl environment. Headless simulations "
+                "do not create a renderer; the official Vehicle wrapper may still require "
+                "the Irrlicht bindings to be installed."
             ) from exc
         self.config = config
+        self.road = getattr(model, "road", None)
+        if self.road is None:
+            self.road = road
+        self.terrain: Any = None
+        if self.road is not None:
+            from .terrain import RoadTerrain
+
+            self.terrain = RoadTerrain(self.road, config)
+        self._road_time_range = time_range_s or (0.0, config["physics"]["episode_seconds"])
+        if (
+            len(self._road_time_range) != 2
+            or not all(math.isfinite(float(t)) for t in self._road_time_range)
+            or self._road_time_range[0] > self._road_time_range[1]
+        ):
+            raise ValueError("time_range_s must be a finite (start, end) pair")
+        self.road_body: Any = None
+        self.road_mesh_stats: dict[str, Any] = {}
+        self._road_meshes: list[tuple[Any, float]] = []
+        self._road_status = (
+            f"Spatial road: {self.road.kind} | same simulation input"
+            if self.road is not None
+            else "MISSING SPATIAL ROAD METADATA | recorded contact pads only"
+        )
         visual = config.get("visualization", {})
         self.speed = float(visual.get("speed", 1.0))
         if not 0.05 <= self.speed <= 4.0:
@@ -109,7 +141,6 @@ class NativeViewer:
             self.chrono.ChColor(0.08, 0.08, 0.08),
             self.chrono.ChColor(0.65, 0.65, 0.65),
         )
-        self.vis.AddGrid(0.5, 0.5, 24, 16)
         self.vis.ShowInfoPanel(False)
         self.set_camera(self._camera_name)
         self._build_controls()
@@ -168,6 +199,108 @@ class NativeViewer:
         shape = self.chrono.ChVisualShapeTriangleMesh()
         shape.SetMesh(mesh)
         return self._shape(self.chassis, shape, (0.24, 0.40, 0.50))
+
+    def _build_road(self) -> None:
+        """Build tiled static meshes once; rendering only translates their body.
+
+        Station s is measured from the front axle at t=0: visual x=a+s-v*t.
+        Lateral blending matches RoadTerrain: smoothstep inside +/-min(track),
+        with flat same-side shoulders covering both front and rear wheel tracks.
+        """
+        visual, vehicle = self.config.get("visualization", {}), self.config["vehicle"]
+        dx = float(visual.get("road_mesh_dx_m", 0.025))
+        width = float(visual.get("road_width_m", 3.6))
+        front = float(vehicle["front_distance_m"])
+        rear = float(vehicle["rear_distance_m"])
+        half_track = min(vehicle["front_half_track_m"], vehicle["rear_half_track_m"])
+        if not math.isfinite(dx) or dx <= 0 or not math.isfinite(width):
+            raise ValueError("Road mesh spacing must be positive and road width finite")
+        if width / 2 <= max(vehicle["front_half_track_m"], vehicle["rear_half_track_m"]) + 0.2:
+            raise ValueError("Road mesh must extend beyond both wheel tracks")
+        if not math.isclose(float(self.road.wheelbase), front + rear, rel_tol=0, abs_tol=1e-8):
+            raise ValueError("Visual vehicle wheelbase differs from its resolved spatial road")
+        road_speed = float(self.road.speed)
+        start = road_speed * float(self._road_time_range[0]) - (front + rear) - 6.0
+        end = road_speed * float(self._road_time_range[1]) + 16.0
+        intervals = math.ceil((end - start) / dx)
+        if intervals > 100_000:
+            raise ValueError("Road mesh exceeds 100,000 stations; reduce viewed time range")
+        dx = (end - start) / intervals
+        # Seven transverse knots resolve the smooth interpolation between tracks.
+        ys = [-width / 2, -half_track, -half_track / 2, 0, half_track / 2, half_track, width / 2]
+        self.road_body = self._body()
+        surface = markings = None
+        previous = None
+        triangles = 0
+        minimum_height = math.inf
+        maximum_height = -math.inf
+
+        def point(s: float, y: float, lift: float = 0) -> Any:
+            location = self._vector((front + s, y, 0))
+            location.z = float(self.terrain.GetHeight(location)) + lift
+            if not math.isfinite(location.z):
+                raise ValueError("Terrain returned a nonfinite mesh height")
+            return location
+
+        def quad(mesh: Any, points: list[Any]) -> None:
+            nonlocal triangles
+            mesh.AddTriangle(points[0], points[1], points[2])
+            mesh.AddTriangle(points[0], points[2], points[3])
+            triangles += 2
+
+        def attach(mesh: Any, color: tuple[float, float, float], lift: float = 0) -> None:
+            shape = self.chrono.ChVisualShapeTriangleMesh()
+            shape.SetMesh(mesh)
+            self._shape(self.road_body, shape, color)
+            self._road_meshes.append((mesh, lift))
+
+        for index in range(intervals + 1):
+            station = start + index * dx
+            left, right = point(station, half_track).z, point(station, -half_track).z
+            minimum_height = min(minimum_height, left, right)
+            maximum_height = max(maximum_height, left, right)
+            if previous is not None:
+                if (index - 1) % 600 == 0:
+                    surface = self.chrono.ChTriangleMeshConnected()
+                    markings = self.chrono.ChTriangleMeshConnected()
+                for y0, y1 in zip(ys[:-1], ys[1:], strict=True):
+                    quad(
+                        surface,
+                        [
+                            point(previous, y0),
+                            point(station, y0),
+                            point(station, y1),
+                            point(previous, y1),
+                        ],
+                    )
+                # Paint sits 1 mm above the surface solely to avoid z-fighting.
+                strips = [(-width / 2 + 0.12, 0.035), (width / 2 - 0.12, 0.035)]
+                if ((previous + station) / 2) % 3.0 < 1.0:
+                    strips.append((0.0, 0.025))
+                for centre, half in strips:
+                    quad(
+                        markings,
+                        [
+                            point(previous, centre - half, 0.001),
+                            point(station, centre - half, 0.001),
+                            point(station, centre + half, 0.001),
+                            point(previous, centre + half, 0.001),
+                        ],
+                    )
+                if index % 600 == 0 or index == intervals:
+                    attach(surface, (0.27, 0.31, 0.35))
+                    attach(markings, (0.86, 0.89, 0.86), 0.001)
+            previous = station
+        self.road_mesh_stats = {
+            "station_min_m": start,
+            "station_max_m": end,
+            "longitudinal_spacing_m": dx,
+            "width_m": width,
+            "triangles_including_markings": triangles,
+            "minimum_track_height_m": minimum_height,
+            "maximum_track_height_m": maximum_height,
+            "frame": "vehicle fixed; road x = front_distance + station - speed*time",
+        }
 
     def _build_scene(self) -> None:
         c = self.chrono
@@ -233,11 +366,15 @@ class NativeViewer:
                 rotation=axle_rotation,
             )
             self.wheels.append(wheel)
-            pad = self._body()
-            self._box(pad, (1.0, 0.70, 0.08), (0.27, 0.33, 0.40))
-            self.road_pads.append(pad)
-        floor = self._body((0, 0, -0.13))
-        self._box(floor, (12, 8, 0.06), (0.72, 0.76, 0.80))
+            if self.road is None:
+                pad = self._body()
+                self._box(pad, (1.0, 0.70, 0.08), (0.27, 0.33, 0.40))
+                self.road_pads.append(pad)
+        if self.road is not None:
+            self._build_road()
+        else:
+            floor = self._body((0, 0, -0.13))
+            self._box(floor, (12, 8, 0.06), (0.72, 0.76, 0.80))
 
     def _build_controls(self) -> None:
         # Official Chrono 10 SWIG builds expose IGUIEnvironment but may return
@@ -263,13 +400,13 @@ class NativeViewer:
         speed.setPos(int(round(self.speed * 100)))
         self._gui_controls["speed"] = speed
         camera = gui.addComboBox(rect(15, 310, 180, 335))
-        for label in ("Isometric", "Side (pitch)", "Front (roll)", "Top"):
+        for label in ("Isometric", "Side (pitch)", "Front (roll)", "Top", "Road ahead"):
             camera.addItem(label)
-        camera.setSelected(("iso", "side", "front", "top").index(self._camera_name))
+        camera.setSelected(CAMERA_NAMES.index(self._camera_name))
         self._gui_controls["camera"] = camera
         gui.addStaticText(
             "Mouse: rotate / pan / zoom\nGeometry scale: 1:1. Arrows: 0.15 m/kN\n"
-            "Pads show road input; no pad collision\nPositive pitch: nose down",
+            f"{self._road_status}\nNo visual collision forces; positive pitch: nose down",
             rect(15, 345, 430, 425),
             False,
             True,
@@ -289,14 +426,21 @@ class NativeViewer:
         panel = tk.Tk()
         self._tk_panel = panel
         panel.title("Chrono | Suspension controls")
-        panel.geometry("450x520+30+50")
-        panel.minsize(450, 520)
+        panel.geometry("500x570+30+50")
+        panel.minsize(500, 570)
         panel.protocol("WM_DELETE_WINDOW", self.close)
         frame = ttk.Frame(panel, padding=18)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="7-DOF ACTIVE SUSPENSION", font=("Segoe UI", 14, "bold")).pack(
             anchor="w", pady=(0, 14)
         )
+        ttk.Label(
+            frame,
+            text=self._road_status,
+            foreground="#1C5979" if self.road is not None else "#A51524",
+            font=("Segoe UI", 10, "bold"),
+            wraplength=460,
+        ).pack(anchor="w", pady=(0, 12))
         variables = {
             "pause": tk.BooleanVar(value=self.paused),
             "cutaway": tk.BooleanVar(value=self.cutaway),
@@ -318,7 +462,7 @@ class NativeViewer:
         ttk.Scale(frame, from_=0.05, to=4, variable=variables["speed"]).pack(fill="x")
         cameras = ttk.Frame(frame)
         cameras.pack(fill="x", pady=12)
-        for name in ("iso", "side", "front", "top"):
+        for name in CAMERA_NAMES:
             ttk.Radiobutton(
                 cameras, text=name.title(), value=name, variable=variables["camera"]
             ).pack(side="left", padx=(0, 8))
@@ -326,14 +470,15 @@ class NativeViewer:
             frame,
             text="Mouse in 3D window: rotate / pan / zoom\n"
             "Geometry: 1:1. Force arrows: 0.15 m/kN\n"
-            "Road pads visualize input; they have no collision.\n"
+            "Road geometry adds no visual collision forces.\n"
+            "Road camera: see the surface moving past the car.\n"
             "Positive pitch means nose down.",
             justify="left",
         ).pack(anchor="w", pady=8)
         self.vis.GetGUIEnvironment().addStaticText(
-            "Native control panel: pause / speed / camera / diagnostics\n"
-            "Geometry 1:1 | Force arrows 0.15 m/kN | Road pads: input display",
-            self.irr.recti(15, 15, 670, 55),
+            f"{self._road_status}\n"
+            "Geometry 1:1 | Prescribed forward speed | Camera: iso / side / front / top / road",
+            self.irr.recti(15, 15, 780, 55),
             False,
             True,
             None,
@@ -348,11 +493,12 @@ class NativeViewer:
             "side": (0.0, -4.5, 1.3),
             "front": (3.5, 0.0, 1.3),
             "top": (0.0, 0.01, 4.5),
+            "road": (-5.5, -5.5, 3.0),
         }
         if name not in cameras:
             raise ValueError(f"Unknown camera {name!r}; choose {tuple(cameras)}")
         self.vis.SetCameraPosition(self._vector(cameras[name]))
-        self.vis.SetCameraTarget(self._vector((0, 0, 0.6)))
+        self.vis.SetCameraTarget(self._vector((4.0, 0, 0.3) if name == "road" else (0, 0, 0.6)))
         self._camera_name = name
 
     def _suspension_points(self, frame: dict[str, Any]) -> tuple[Any, Any]:
@@ -393,7 +539,7 @@ class NativeViewer:
             self.paused = bool(controls["pause"].isChecked())
             self.speed = float(controls["speed"].getPos()) / 100
             self.cutaway = bool(controls["cutaway"].isChecked())
-            camera = ("iso", "side", "front", "top")[controls["camera"].getSelected()]
+            camera = CAMERA_NAMES[controls["camera"].getSelected()]
         if self.cutaway != self._last_cutaway:
             for shape in self._shell_shapes:
                 shape.SetVisible(not self.cutaway)
@@ -408,9 +554,12 @@ class NativeViewer:
         for index, wheel in enumerate(self.wheels):
             position = frame["wheel_pos"][index]
             wheel.SetPos(self._vector(position))
-            self.road_pads[index].SetPos(
-                self._vector((position[0], position[1], float(frame["road_m"][index]) - 0.04))
-            )
+            if self.road_pads:
+                self.road_pads[index].SetPos(
+                    self._vector((position[0], position[1], float(frame["road_m"][index]) - 0.04))
+                )
+        if self.road_body is not None:
+            self.road_body.SetPos(self._vector((-self.road.speed * frame["time_s"], 0, 0)))
         self.system.Update(float(frame["time_s"]))
         forces = frame.get("actuator_force_n", [0.0] * 4)
         travel = frame.get("suspension_travel_m", [0.0] * 4)
@@ -425,6 +574,13 @@ class NativeViewer:
             f"pitch = {math.degrees(float(frame.get('pitch_rad', 0))):+.3f} deg\n"
             "corner    travel [mm]   actuator [N]\n"
         )
+        if self.road is not None:
+            hud = hud.replace(
+                "corner    travel [mm]   actuator [N]",
+                f"road speed = {self.road.speed:.2f} m/s; "
+                f"station = {self.road.speed * frame['time_s']:.2f} m\n"
+                "corner    travel [mm]   actuator [N]",
+            )
         hud += "\n".join(
             f"{name:>3}       {1000 * float(travel[i]):+8.2f}       {float(forces[i]):+8.1f}"
             for i, name in enumerate(CORNER_NAMES)

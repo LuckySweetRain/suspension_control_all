@@ -40,6 +40,7 @@ PyTorch构建选项见[官方安装记录](https://pytorch.org/get-started/previ
 ```powershell
 conda activate chrono-rl
 python chrono/scripts/check_model.py
+python chrono/scripts/check_terrain.py --with-vector
 python chrono/scripts/view.py --controller passive --scenario bump
 python chrono/scripts/view.py --controller skyhook --scenario left_bump
 python chrono/scripts/benchmark.py --help
@@ -53,6 +54,8 @@ python chrono/scripts/run_experiments.py --help
 产物统一写入外层 `results/chrono/`，不写入源代码目录。
 
 道路支持B/C级目标谱、正弦、有限上升沿阶跃、凹坑、凸包，以及随机背景叠加局部事件。
+道路本身实现为 Chrono `ChTerrain` 地形，原生窗口显示由同一地形生成的连续三角网格，
+以给定车速经过车轮。实现边界和使用方法见 [Chrono地形](docs/terrain.md)。
 七类配置、四轮曲线导出、混合训练和28-case评估见 [道路建模](docs/roads.md)。
 原有随机路面和20-case评估仍保留，旧结果不自动改用新道路。
 

@@ -10,10 +10,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from chrono_suspension.config import load_config  # noqa: E402
-from chrono_suspension.roads import ROAD_KINDS  # noqa: E402
+from chrono_suspension.roads import ROAD_KINDS, FourWheelRoad  # noqa: E402
 from chrono_suspension.visualization import NativeViewer, result_path, validate_frame  # noqa: E402
 
 
@@ -78,7 +80,42 @@ def replay(args: argparse.Namespace) -> None:
     metadata, frames = read_trajectory(Path(args.replay))
     source_cfg = metadata.get("config") if metadata else None
     cfg = load_config(args.config if args.config else source_cfg)
-    viewer = NativeViewer(None, _view_options(cfg, args))
+    road = None
+    if metadata is not None and metadata.get("resolved_road") is not None:
+        vehicle = cfg["vehicle"]
+        road = FourWheelRoad.from_metadata(
+            metadata["resolved_road"], vehicle["front_distance_m"], vehicle["rear_distance_m"]
+        )
+        expected_wheel_xy = np.array(
+            [
+                [vehicle["front_distance_m"], vehicle["front_half_track_m"]],
+                [vehicle["front_distance_m"], -vehicle["front_half_track_m"]],
+                [-vehicle["rear_distance_m"], vehicle["rear_half_track_m"]],
+                [-vehicle["rear_distance_m"], -vehicle["rear_half_track_m"]],
+            ]
+        )
+        for index, frame in enumerate(frames):
+            if not np.allclose(
+                np.asarray(frame["wheel_pos"])[:, :2], expected_wheel_xy, atol=1e-8, rtol=0
+            ):
+                raise ValueError(
+                    f"Recorded wheel geometry differs from the replay terrain at frame {index}; "
+                    "use the recorded axle distances and half tracks"
+                )
+            expected, _ = road.sample(float(frame["time_s"]))
+            if not np.allclose(expected, frame["road_m"], atol=1e-8, rtol=1e-8):
+                raise ValueError(
+                    f"Recorded wheel heights disagree with reconstructed terrain at frame {index}; "
+                    "check the recorded road definition and source version"
+                )
+    else:
+        print("No resolved spatial road metadata: replay shows recorded wheel-height pads only.")
+    viewer = NativeViewer(
+        None,
+        _view_options(cfg, args),
+        road=road,
+        time_range_s=(float(frames[0]["time_s"]), float(frames[-1]["time_s"])),
+    )
     index = 0
     frame_count = 0
     image_saved = False
@@ -224,7 +261,7 @@ def main() -> None:
     )
     parser.add_argument("--speed", type=float, default=1.0, help="Playback speed, 0.05 to 4.0")
     parser.add_argument("--fps", type=float, default=60.0)
-    parser.add_argument("--camera", choices=("iso", "side", "front", "top"), default="iso")
+    parser.add_argument("--camera", choices=("iso", "side", "front", "top", "road"), default="iso")
     parser.add_argument(
         "--body-shell", action="store_true", help="Start with vehicle shell visible"
     )

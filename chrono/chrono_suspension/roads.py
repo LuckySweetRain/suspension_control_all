@@ -285,6 +285,77 @@ class FourWheelRoad:
             raise ValueError("Preview requires nonnegative integer steps and positive dt")
         return np.array([self.sample(t + (i + 1) * dt)[0] for i in range(steps)]).reshape(-1)
 
+    def sample_tracks(self, station: float | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Sample left/right tracks at spatial stations, independent of axle delay.
+
+        Returns height (m) and slope dz/ds (dimensionless), each shaped
+        ``station.shape + (2,)``. A scalar station returns two-element arrays.
+        This is the common source for Chrono terrain queries and mesh vertices.
+        """
+        positions = np.asarray(station, dtype=float)
+        if not np.all(np.isfinite(positions)):
+            raise ValueError("Road stations must be finite")
+        shape = (*positions.shape, 2)
+        heights = np.empty((positions.size, 2))
+        slopes = np.empty_like(heights)
+        for index, position in enumerate(positions.reshape(-1)):
+            z, velocity = self.sample(float(position) / self.speed)
+            heights[index] = z[:2]
+            slopes[index] = velocity[:2] / self.speed
+        return heights.reshape(shape), slopes.reshape(shape)
+
+    @classmethod
+    def from_metadata(
+        cls, metadata: dict, front_distance: float, rear_distance: float
+    ) -> FourWheelRoad:
+        """Reconstruct the recorded realization, including composite child seeds.
+
+        Episode RNG seeds are deliberately not used as substitutes for the
+        resolved road seed. Callers must additionally compare recorded wheel
+        heights when replaying trajectories produced by another source version.
+        """
+
+        def scenario_from_record(record: dict) -> dict:
+            if not isinstance(record, dict) or record.get("schema") != "chrono-spatial-road-v2":
+                raise ValueError("Unsupported or missing resolved road metadata")
+            if not np.isclose(
+                float(record["wheelbase_m"]),
+                front_distance + rear_distance,
+                rtol=0,
+                atol=1e-10,
+            ):
+                raise ValueError("Recorded road wheelbase differs from the vehicle geometry")
+            scenario = {
+                **deepcopy(record["parameters"]),
+                "kind": record["kind"],
+                "seed": record["seed"],
+                "speed_mps": record["speed_mps"],
+                "run_in_m": record["run_in_m"],
+                "tracks": record["tracks"],
+            }
+            spectrum = record.get("spectral")
+            if scenario["kind"] in {"random", "iso", "iso_b", "iso_c"}:
+                if not isinstance(spectrum, dict):
+                    raise ValueError("Random road metadata must contain its spectrum")
+                scenario["left_right_correlation"] = spectrum["left_right_target_correlation"]
+                if scenario["kind"] == "random":
+                    scenario["roughness_m"] = spectrum["expected_rms_m"]
+                else:
+                    scenario.update(
+                        level=spectrum["level"],
+                        gdn0_m3=spectrum["gdn0_m3"],
+                        n_min_per_m=spectrum["n_min_per_m"],
+                        n_max_per_m=spectrum["n_max_per_m"],
+                        spectral_modes=spectrum["modes"],
+                    )
+            if scenario["kind"] == "composite":
+                scenario["components"] = [
+                    scenario_from_record(child) for child in record["components"]
+                ]
+            return scenario
+
+        return cls(scenario_from_record(metadata), front_distance, rear_distance, metadata["seed"])
+
     def metadata(self) -> dict:
         """Resolved road parameters; random seeds allow reconstruction."""
         return {
