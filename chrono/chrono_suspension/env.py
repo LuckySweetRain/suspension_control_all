@@ -60,7 +60,16 @@ class ChronoSuspensionEnv(gym.Env):
             self.viewer = None
         if self.model is not None:
             self.model.close()
-        scenario = merge_config(self.config["road"], (options or {}).get("scenario", {}))
+        road_config = deepcopy(self.config["road"])
+        choices = road_config.pop("scenarios", None)
+        override = (options or {}).get("scenario")
+        # Only training resets without an explicit scenario draw from the mix.
+        # Evaluation passes a fixed scenario and bypasses this random selection.
+        selected_index = None
+        if override is None and choices is not None:
+            selected_index = int(self.np_random.integers(len(choices)))
+            override = choices[selected_index]
+        scenario = merge_config(road_config, override or {})
         road_seed = int(self.np_random.integers(0, 2**31 - 1))
         v = self.config["vehicle"]
         self.road = FourWheelRoad(scenario, v["front_distance_m"], v["rear_distance_m"], road_seed)
@@ -77,7 +86,10 @@ class ChronoSuspensionEnv(gym.Env):
         )
         obs = self._observation()
         self._last_observation = obs.copy()
-        return obs, self._info(self.model.metrics())
+        info = self._info(self.model.metrics())
+        info["road_metadata"] = self.road.metadata()
+        info["road_scenario_index"] = selected_index
+        return obs, info
 
     def _measure_sensors(self, metrics: dict) -> np.ndarray:
         cfg = self.config["observation"]

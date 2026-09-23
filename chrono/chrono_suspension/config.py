@@ -169,6 +169,15 @@ def validate_config(cfg: dict) -> None:
     for key, weight in cfg["reward"].items():
         if not np.isfinite(weight) or weight < 0:
             raise ValueError(f"reward.{key} must be finite and nonnegative")
+    road = cfg["road"]
+    if not isinstance(road, dict):
+        raise ValueError("road must be a configuration mapping")
+    if "scenarios" in road:
+        scenarios = road["scenarios"]
+        if not isinstance(scenarios, list) or not scenarios:
+            raise ValueError("road.scenarios must be a nonempty list")
+        if any(not isinstance(item, dict) or "kind" not in item for item in scenarios):
+            raise ValueError("Every training road scenario must be a mapping with a kind")
 
 
 def load_config(path: str | Path | dict | None = None) -> dict:

@@ -1,0 +1,8 @@
+road:
+  kind: bump
+  speed_mps: 15.0
+  height_m: 0.03
+  length_m: 0.8
+  start_m: 9.0
+  tracks: both
+  run_in_m: 3.0

@@ -52,6 +52,10 @@ python chrono/scripts/run_experiments.py --help
 完整 CLI 参数见 `docs/training.md` 和 `docs/visualization.md`。
 产物统一写入外层 `results/chrono/`，不写入源代码目录。
 
+道路支持B/C级目标谱、正弦、有限上升沿阶跃、凹坑、凸包，以及随机背景叠加局部事件。
+七类配置、四轮曲线导出、混合训练和28-case评估见 [道路建模](docs/roads.md)。
+原有随机路面和20-case评估仍保留，旧结果不自动改用新道路。
+
 ## Python 接口
 
 安装开发包后可直接调用：

@@ -13,6 +13,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from chrono_suspension.config import load_config  # noqa: E402
+from chrono_suspension.roads import ROAD_KINDS  # noqa: E402
 from chrono_suspension.visualization import NativeViewer, result_path, validate_frame  # noqa: E402
 
 
@@ -129,7 +130,7 @@ def live(args: argparse.Namespace) -> None:
     record = None
     try:
         options = {"scenario": {"kind": args.scenario}} if args.scenario else None
-        observation, _ = env.reset(seed=args.seed, options=options)
+        observation, reset_info = env.reset(seed=args.seed, options=options)
         predict = None
         if args.checkpoint:
             from chrono_suspension.training import load_policy
@@ -146,6 +147,7 @@ def live(args: argparse.Namespace) -> None:
                         "config": cfg,
                         "seed": args.seed,
                         "scenario": options,
+                        "resolved_road": reset_info["road_metadata"],
                         "controller": args.checkpoint or args.controller,
                         "coordinates": "x_forward_y_left_z_up; quaternion_wxyz; SI",
                     },
@@ -212,7 +214,7 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--checkpoint", help="SB3 checkpoint directory with normalization statistics")
     mode.add_argument("--replay", help="JSONL trajectory; does not advance dynamics")
-    parser.add_argument("--scenario", help="Road kind override, e.g. flat, bump, sine, random")
+    parser.add_argument("--scenario", choices=ROAD_KINDS, help="Road kind override")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--duration", type=float, help="Episode duration in seconds (live only)")
     parser.add_argument("--record", help="Write a new JSONL trajectory within results/")

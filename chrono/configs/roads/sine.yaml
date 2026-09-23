@@ -1,0 +1,8 @@
+road:
+  kind: sine
+  speed_mps: 15.0
+  height_m: 0.03
+  wavelength_m: 5.0
+  phase_rad: 0.0
+  tracks: both
+  run_in_m: 3.0

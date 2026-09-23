@@ -1,0 +1,35 @@
+# Each reset without options.scenario selects one of these seven uniformly.
+# A single choice is kept for the whole episode. Explicit evaluation bypasses it.
+road:
+  speed_mps: 15.0
+  left_right_correlation: 0.6
+  run_in_m: 3.0
+  scenarios:
+    - kind: iso_b
+    - kind: iso_c
+    - kind: sine
+      height_m: 0.03
+      wavelength_m: 5.0
+    - kind: step
+      height_m: 0.03
+      start_m: 9.0
+      transition_length_m: 0.3
+    - kind: pothole
+      height_m: 0.03
+      length_m: 0.8
+      start_m: 9.0
+    - kind: bump
+      height_m: 0.03
+      length_m: 0.8
+      start_m: 9.0
+    - kind: composite
+      components:
+        - kind: iso_b
+        - kind: bump
+          height_m: 0.03
+          length_m: 0.8
+          start_m: 30.0
+        - kind: pothole
+          height_m: 0.03
+          length_m: 0.8
+          start_m: 75.0

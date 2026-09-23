@@ -133,6 +133,7 @@ def collect_rows(directory: Path, state: dict[str, Any]) -> list[dict[str, Any]]
         latest = None if is_baseline else int(group.get("completed_steps", 0))
         row = {
             "controller": label,
+            "road_suite": state.get("road_suite", "legacy"),
             "algorithm": group.get("algorithm"),
             "observation_mode": "true_state_reference"
             if is_baseline
@@ -194,6 +195,7 @@ def write_report(directory: Path) -> tuple[Path, Path]:
         f"运行状态：`{state.get('status', 'unknown')}`；共同完成训练步数：**{state.get('common_completed_steps', 0)}**；"
         f"每组计划目标：{state.get('planned_timesteps', '尚未完成 pilot')}；请求上限：{state.get('max_timesteps', '未知')}。",
         f"累计计入预算：{_display(state.get('consumed_s'), 1 / 3600)} 小时；总预算：{_display(state.get('budget_hours'))} 小时。",
+        f"道路套件：`{state.get('road_suite', 'legacy')}`；每个控制器计划 {rows[0]['scheduled_cases']} 个case。不同套件的汇总均值不能直接比较。",
         "",
         "## 完整性与公平比较",
         "",

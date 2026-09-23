@@ -33,6 +33,7 @@ def _run_child(config: dict, output: Path, options: dict) -> None:
                 key: result.get(key)
                 for key in (
                     "status",
+                    "road_suite",
                     "planned_timesteps",
                     "common_completed_steps",
                     "consumed_s",
@@ -69,9 +70,13 @@ def _terminate_tree(process: mp.Process) -> None:
         process.join(timeout=5)
 
 
-def _record_stop(state_path: Path, status: str, consumed_s: float) -> None:
+def _record_stop(
+    state_path: Path, status: str, consumed_s: float, road_suite: str = "legacy"
+) -> None:
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
     state.update(status=status, consumed_s=consumed_s)
+    state.setdefault("road_suite", road_suite)
+    state.setdefault("test_cases", evaluation_cases(road_suite=state["road_suite"]))
     planned = state.get("planned_timesteps", state.get("max_timesteps", 1_000_000))
     groups = state.get("groups", experiment_groups())
     state["incomplete_training_groups"] = [
@@ -107,6 +112,7 @@ def main() -> None:
     parser.add_argument("--chunk-steps", type=int, default=16_384)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--road-suite", choices=("legacy", "seven"), default="legacy")
     parser.add_argument(
         "--describe",
         action="store_true",
@@ -118,7 +124,8 @@ def main() -> None:
             json.dumps(
                 {
                     "groups": experiment_groups(),
-                    "test_cases": evaluation_cases(),
+                    "road_suite": args.road_suite,
+                    "test_cases": evaluation_cases(road_suite=args.road_suite),
                     "training_fraction": 0.8,
                     "evaluation_fraction": 0.2,
                 },
@@ -139,6 +146,12 @@ def main() -> None:
         if not args.resume:
             parser.error("Experiment already exists; choose another --name or use --resume.")
         state = json.loads(state_path.read_text(encoding="utf-8"))
+        if state.get("road_suite", "legacy") != args.road_suite:
+            parser.error("--road-suite must match the saved experiment.")
+        if state.get(
+            "test_cases", evaluation_cases(road_suite=args.road_suite)
+        ) != evaluation_cases(road_suite=args.road_suite):
+            parser.error("Road scenarios differ from the saved experiment's test cases.")
         consumed = float(state.get("consumed_s", 0.0))
         if args.config is None:
             config = state["config"]
@@ -153,6 +166,7 @@ def main() -> None:
         "resume": args.resume,
         "pilot_steps": args.pilot_steps,
         "chunk_steps": args.chunk_steps,
+        "road_suite": args.road_suite,
     }
     process = mp.get_context("spawn").Process(target=_run_child, args=(config, output, options))
     print(f"Experiment: {output}\nRemaining hard budget: {remaining:.1f} s", flush=True)
@@ -163,7 +177,9 @@ def main() -> None:
             process.join(timeout=min(1.0, max(0.0, deadline - time.monotonic())))
         if process.is_alive():
             _terminate_tree(process)
-            _record_stop(state_path, "watchdog_stopped", args.budget_hours * 3600.0)
+            _record_stop(
+                state_path, "watchdog_stopped", args.budget_hours * 3600.0, args.road_suite
+            )
             print("Hard budget reached; experiment processes stopped.", flush=True)
         else:
             # Include process startup/shutdown in persisted budget accounting,
@@ -183,6 +199,7 @@ def main() -> None:
             state_path,
             "interrupted",
             args.budget_hours * 3600.0 - max(0.0, deadline - time.monotonic()),
+            args.road_suite,
         )
         raise
 

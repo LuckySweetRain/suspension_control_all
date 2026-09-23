@@ -7,11 +7,13 @@ import json
 import math
 import time
 import traceback
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from chrono_suspension.roads import seven_road_scenarios
 from chrono_suspension.training import (
     align_steps,
     benchmark_workers,
@@ -26,14 +28,21 @@ VALIDATION_SEEDS = (2001, 2002, 2003, 2004)
 TRAINING_SEEDS = (42, 43, 44)
 
 
-def evaluation_cases(split: str = "test") -> list[dict[str, Any]]:
-    """Twenty predefined cases; test seeds are never used for training/tuning."""
+def evaluation_cases(split: str = "test", road_suite: str = "legacy") -> list[dict[str, Any]]:
+    """Fixed 20/28-case suites; test seeds are never used for training/tuning."""
     if split not in ("test", "validation"):
         raise ValueError("split must be test or validation")
+    if road_suite not in ("legacy", "seven"):
+        raise ValueError("road_suite must be legacy or seven")
     seeds = TEST_SEEDS if split == "test" else VALIDATION_SEEDS
+    scenarios = (
+        {kind: {"kind": kind} for kind in SCENARIOS}
+        if road_suite == "legacy"
+        else seven_road_scenarios()
+    )
     return [
-        {"id": f"{kind}_{seed}", "kind": kind, "seed": seed, "speed_mps": 15.0}
-        for kind in SCENARIOS
+        {"id": f"{name}_{seed}", **deepcopy(scenario), "seed": seed, "speed_mps": 15.0}
+        for name, scenario in scenarios.items()
         for seed in seeds
     ]
 
@@ -132,6 +141,7 @@ def evaluate_cases(
     baseline: str | None = None,
     observation_mode: str = "privileged",
     split: str = "test",
+    road_suite: str = "legacy",
     deadline: float | None = None,
 ) -> dict[str, Any]:
     """Evaluate the same disturbances, duration and action limits for every policy.
@@ -145,6 +155,7 @@ def evaluate_cases(
         raise ValueError("Provide exactly one of checkpoint or baseline.")
     if baseline is not None and baseline not in ("passive", "skyhook", "lqr"):
         raise ValueError("Unknown baseline controller.")
+    cases = evaluation_cases(split, road_suite)
     if checkpoint is not None:
         metadata = json.loads((checkpoint / "metadata.json").read_text(encoding="utf-8"))
         saved_config = json.loads((checkpoint / "config.json").read_text(encoding="utf-8"))
@@ -153,7 +164,6 @@ def evaluate_cases(
         observation_mode = metadata["observation_mode"]
     output_dir.mkdir(parents=True, exist_ok=True)
     env = ChronoSuspensionEnv(config=config, observation_mode=observation_mode, render_mode=None)
-    cases = evaluation_cases(split)
     completed: list[dict[str, Any]] = []
     dt = float(config["physics"]["control_dt"])
     step_limit = math.ceil(float(config["physics"]["episode_seconds"]) / dt) + 1
@@ -162,7 +172,7 @@ def evaluate_cases(
         for case in cases:
             if deadline is not None and time.monotonic() >= deadline:
                 break
-            observation, _ = env.reset(seed=case["seed"], options={"scenario": case})
+            observation, reset_info = env.reset(seed=case["seed"], options={"scenario": case})
             samples: list[dict[str, Any]] = []
             step_infos: list[dict[str, Any]] = []
             reward_sum = 0.0
@@ -194,6 +204,7 @@ def evaluate_cases(
                 metric_error = str(exc)
             row = {
                 "case": case,
+                "road_metadata": reset_info.get("road_metadata"),
                 "status": status,
                 "terminated": bool(terminated),
                 "truncated": bool(truncated),
@@ -232,6 +243,7 @@ def evaluate_cases(
     summary = {
         "controller": str(checkpoint) if checkpoint is not None else baseline,
         "split": split,
+        "road_suite": road_suite,
         "cases": completed,
         "finished_cases": len(finished_ids),
         "successful_cases": len(successful),
@@ -289,6 +301,7 @@ def run_experiment_suite(
     resume: bool = False,
     pilot_steps: int = 2048,
     chunk_steps: int = 16_384,
+    road_suite: str = "legacy",
 ) -> dict[str, Any]:
     """Run a fixed twelve-group matrix with equal completed-step comparisons.
 
@@ -298,6 +311,7 @@ def run_experiment_suite(
     """
     if not 0 < budget_hours <= 24 or max_timesteps <= 0 or max_timesteps > 1_000_000:
         raise ValueError("budget_hours must be in (0,24], max_timesteps in (0,1000000].")
+    test_cases = evaluation_cases(road_suite=road_suite)
     output_dir.mkdir(parents=True, exist_ok=True)
     state_path = output_dir / "experiment.json"
     started = time.monotonic()
@@ -311,6 +325,12 @@ def run_experiment_suite(
             raise ValueError("Budget and maximum steps must match the saved experiment.")
         if n_envs is not None and state.get("n_envs") not in (None, n_envs):
             raise ValueError("Worker count cannot change when resuming optimizer/replay state.")
+        if state.get("road_suite", "legacy") != road_suite:
+            raise ValueError("Road suite cannot change when resuming an experiment.")
+        if state.get("test_cases", test_cases) != test_cases:
+            raise ValueError("Road scenarios differ from the saved experiment's test cases.")
+        state.setdefault("road_suite", road_suite)
+        state.setdefault("test_cases", test_cases)
         if state["status"] in ("finished", "budget_exhausted", "watchdog_stopped"):
             return state
         consumed = float(state.get("consumed_s", 0.0))
@@ -327,7 +347,8 @@ def run_experiment_suite(
             "status": "benchmark",
             "consumed_s": 0.0,
             "common_completed_steps": 0,
-            "test_cases": evaluation_cases(),
+            "road_suite": road_suite,
+            "test_cases": test_cases,
             "evaluation": {},
             "started_unix_s": time.time(),
         }
@@ -463,6 +484,7 @@ def run_experiment_suite(
                         output_dir / "evaluation" / f"common_{common}" / label,
                         checkpoint=checkpoint,
                         baseline=baseline,
+                        road_suite=road_suite,
                         deadline=deadline,
                     )
                     state["evaluation"][label] = {
@@ -476,7 +498,8 @@ def run_experiment_suite(
                 except Exception as exc:
                     state["evaluation"][label] = {
                         "error": str(exc),
-                        "incomplete_cases": [case["id"] for case in evaluation_cases()],
+                        "road_suite": road_suite,
+                        "incomplete_cases": [case["id"] for case in test_cases],
                     }
                     print(f"  evaluation failed: {exc}", flush=True)
                 persist()

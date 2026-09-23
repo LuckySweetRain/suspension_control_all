@@ -78,6 +78,12 @@ CLI 的独立父进程 watchdog 在总预算用尽时终止实验进程树；普
 
 ## 测试集与结果解释
 
+以下20-case说明对应默认 `--road-suite legacy`。新增 `--road-suite seven` 使用
+B、C、正弦、阶跃、凹坑、凸包、叠加七类×4种子，共28case；同样支持test/validation
+分离。七类混合训练配置为 `chrono/configs/seven_roads_training.yaml`，每回合均匀
+选择一类，显式评估场景绕过随机选择。定义和迁移差异见 [道路说明](roads.md)。
+实验恢复时套件和固定case列表必须一致；不要混合比较不同套件的汇总均值。
+
 固定正式测试为 flat、bump、left_bump、sine、random 各配 1001–1004 四个种子，车速均为 15 m/s，共 20 case。验证集使用 2001–2004；训练 episode 使用独立的大整数种子流，并按 run seed、worker rank、episode 分开。测试集不能用于超参数选择。默认训练路面按配置的 `road` 生成，不会偷偷用测试 seed 调参。
 
 平路、确定性减速带和正弦场景的多个种子可能只改变传感器噪声，不能把它们描述成多个独立道路样本。传感器模式含观测延迟和噪声，privileged 模式可以读取真实状态；LQR/skyhook 使用模型状态，属于有状态信息的参考基线，不能声称它们与 sensors 策略拥有同样的可用测量。

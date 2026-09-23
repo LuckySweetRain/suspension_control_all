@@ -1,0 +1,9 @@
+road:
+  kind: iso_c
+  speed_mps: 15.0
+  gdn0_m3: 0.000256
+  n_min_per_m: 0.02
+  n_max_per_m: 2.0
+  spectral_modes: 256
+  left_right_correlation: 0.6
+  run_in_m: 3.0

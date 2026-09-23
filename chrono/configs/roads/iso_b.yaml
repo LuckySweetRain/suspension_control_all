@@ -1,0 +1,10 @@
+# SI units. Target one-sided spatial displacement PSD, n0=0.1 cycles/m.
+road:
+  kind: iso_b
+  speed_mps: 15.0
+  gdn0_m3: 0.000064
+  n_min_per_m: 0.02
+  n_max_per_m: 2.0
+  spectral_modes: 256
+  left_right_correlation: 0.6
+  run_in_m: 3.0

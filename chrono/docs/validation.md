@@ -5,6 +5,38 @@
 所有命令从外层仓库根目录、激活该环境后执行。未运行pytest。
 最终矩阵完成时间为北京时间2026年9月23日；目录中的20260922采用运行开始的UTC日期。
 
+## 七类道路扩展：2026年9月23日
+
+新增B/C目标谱、有限上升沿阶跃、叠加输入及七类预设，并接入单类/每回合随机选类训练、
+28-case固定评估、原生记录和静态预览。定义与旧半车参数差异见 [道路说明](roads.md)。
+
+实际执行与证据：
+
+- `python chrono/scripts/check_roads.py --with-env`：最终12项全部通过。
+  报告 `results/chrono/roads/checks_20260923T013918017742Z.json` 的源文件哈希与最终道路代码一致。
+  覆盖解析导数、前后延迟、单侧轮迹、阶跃端点和积分、叠加与单次渐入、复现、
+  固定评估预设隔离、PSD积分、2048种子集合统计、旧版兼容、非法参数、Gym和七类10秒仿真。
+- 默认B级目标集合RMS为5.6285mm，2048种子实测左右误差均小于1%；目标相关系数
+  0/0.6/1对应样本结果约0.0252/0.6216/1。同seed的C级幅值为B级2倍。
+  这些是合成器统计检查，不是道路等级认证。
+- `python chrono/scripts/check_model.py --output results/chrono/validation/road_extension_model_check_20260923.json`：
+  原15项模型与接口检查全部通过。
+- `python chrono/scripts/train.py --algorithm ppo --observation-mode sensors --workers 2 --steps 2048 --config chrono/configs/seven_roads_training.yaml --name seven_roads_smoke_20260923 --device cpu`：
+  真实spawn并行采样、PPO更新及检查点保存完成；该短训不证明收敛。
+- `python chrono/scripts/evaluate.py --baseline passive --road-suite seven --name seven_roads_passive_20260923`：
+  28/28个测试case完整结束、0提前终止、0设计行程超限；12个case出现过轮胎卸载。
+  所有已评估道路元数据与最终七类预设逐项核对一致。
+- `python chrono/scripts/preview_roads.py --output-dir results/chrono/road_preview/seven_roads_final_20260923`：
+  生成9张PNG、9份PDF、7份四轮高度/速度CSV和元数据；每类5001点，0–10秒，采样2ms。
+  已检查总览、局部事件和理论PSD图；预览不包含车辆仿真。
+- 原生Skyhook＋叠加路面实际运行2.04秒，截图及轨迹：
+  `results/chrono/visualization/composite_road_20260923.png`、同名JSONL。
+- 外层 `python scripts/check_project.py` 全部通过：
+  `results/project_checks/20260923_093115_626911/report.json`。Ruff与格式检查通过，未运行pytest。
+
+本轮没有重新运行完整12组RL矩阵；新七类均值不能直接与下方旧20-case实验均值比较。
+固定道路套件默认仍为legacy，显式 `--road-suite seven` 才使用28case。
+
 ## 动力学和接口
 
 `python chrono/scripts/check_model.py` 的15项检查全部通过，包括：
