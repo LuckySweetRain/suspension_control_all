@@ -5,6 +5,37 @@
 所有命令从外层仓库根目录、激活该环境后执行。未运行pytest。
 最终矩阵完成时间为北京时间2026年9月23日；目录中的20260922采用运行开始的UTC日期。
 
+## CarSim D-Class参数接入：2026年9月24日
+
+以用户入口实际引用的展开INPUT为主要来源，新增两套独立CarSim车型配置。旧失败echo仅用于
+单位及静载旁证；没有运行或修改CarSim。参数审计保存在 `results/chrono/carsim/source_audit.json`，
+迁移边界见 [CarSim参数迁移](carsim_parameters.md)。实际执行：
+
+- `python chrono/scripts/check_model.py --config chrono/configs/carsim_dclass.yaml --output results/chrono/carsim/check_model_dclass_initial.json`：
+  15项全部通过，含10秒静平衡、力方向、接触单边性、执行器、原生帧、Gym/SB3接口、
+  0.5ms与0.25ms步长对比，以及真实力回调对刚度/阻尼/输入雅可比。
+- `python chrono/scripts/check_model.py --output results/chrono/carsim/check_model_sedan_regression.json`：
+  原Sedan基准15项全部通过。
+- `python chrono/scripts/check_carsim.py --with-vector`：9项全部通过，报告
+  `results/chrono/carsim/checks_20260924T033331602342Z.json`。
+  验证源文件哈希、17项映射及继承配置；独立源数据与13个阻尼节点、止挡节点及线性外推对照；
+  检查阻尼/止挡无重复叠加、防倾杆同相/反相响应、静态7DOF及线性化一致性。
+  2秒静态最大广义位移约3.96e-15，轮胎静载误差约5.09e-11N。
+  刚度/阻尼/输入雅可比最大绝对差约1.16e-5、1.46e-6、7.56e-10。
+  七类×被动/Skyhook共14个工况各完成2.3秒，无提前终止；部分工况轮胎卸载。
+  叠加工况覆盖30m凸包，未运行到75m凹坑。此项是有限值检查，不是控制性能结论。
+  两个spawn worker在两种观测下分别得到 `(2,98)`、`(2,130)`，自动重置和清理通过，
+  没有创建渲染器或道路网格。
+- `python chrono/scripts/view.py --config chrono/configs/carsim_dclass.yaml --controller skyhook --scenario composite --duration 2.1 --camera iso --speed 4 --record results/chrono/carsim/dclass_native.jsonl --screenshot results/chrono/carsim/dclass_native.png`：
+  已实际运行并检查原生截图，记录211帧。
+- 外层 `python scripts/check_project.py` 全部通过：
+  `results/project_checks/20260924_113131_715178/report.json`。
+  Ruff静态与格式检查通过，未运行pytest。
+
+没有重新训练RL或比较CarSim时域响应。源阻尼样条采用保留节点的分段线性近似，弹簧小滞回
+省略，车身参考姿态和安装面采用七自由度等效。主动执行器仍为研究参数，不能据上述检查
+宣称完整复现CarSim、控制效果提升或实车参数标定。
+
 ## Chrono连续地形：2026年9月23日
 
 在七类道路扩展基础上接入 `RoadTerrain(ChTerrain)` 和连续原生三角网格，保持严格七自由度。

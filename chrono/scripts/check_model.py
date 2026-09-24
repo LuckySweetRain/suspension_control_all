@@ -291,10 +291,10 @@ def check_static_tangent(cfg: dict) -> dict:
             )
         forces = np.asarray(forces)
         return np.r_[
-            np.sum(forces[:, 2]) - model.config["vehicle"]["sprung_mass_kg"] * 9.81,
+            np.sum(forces[:, 2]) - model.config["vehicle"]["sprung_mass_kg"] * model.gravity,
             torque[0] * np.cos(q[2]) - torque[2] * np.sin(q[2]),
             torque[1],
-            -forces[:, 2] + np.asarray(tire_forces) - model.mu * 9.81,
+            -forces[:, 2] + np.asarray(tire_forces) - model.mu * model.gravity,
         ]
 
     cases = {
@@ -453,7 +453,12 @@ def check_suspension_mount_guard(cfg: dict) -> dict:
     import pychrono as chrono
     from chrono_suspension.env import ChronoSuspensionEnv
 
-    low_vehicle = {**cfg["vehicle"], "body_height_m": 0.5, "travel_limit_m": 0.09}
+    low_vehicle = {
+        **cfg["vehicle"],
+        "body_height_m": 0.5,
+        "suspension_mount_height_m": -0.1,
+        "travel_limit_m": 0.09,
+    }
     try:
         load_config({**cfg, "vehicle": low_vehicle})
     except ValueError as exc:

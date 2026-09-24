@@ -513,7 +513,9 @@ class NativeViewer:
         )
         top = []
         for x, y in corners:
-            point = self.chassis.TransformPointLocalToParent(self._vector((x, y, -0.10)))
+            point = self.chassis.TransformPointLocalToParent(
+                self._vector((x, y, vehicle["suspension_mount_height_m"]))
+            )
             top.append((point.x, point.y, point.z))
         return top, frame["wheel_pos"]
 

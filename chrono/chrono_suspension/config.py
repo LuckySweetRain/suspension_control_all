@@ -9,6 +9,8 @@ from typing import Any
 import numpy as np
 import yaml
 
+from .constitutive import validate_force_tables
+
 PROJECT = Path(__file__).resolve().parents[1]
 REPOSITORY = PROJECT.parent
 
@@ -16,7 +18,12 @@ REPOSITORY = PROJECT.parent
 # explicit engineering assumptions until replaced by the sourced preset.
 DEFAULT_CONFIG: dict[str, Any] = {
     "seed": 42,
-    "physics": {"dt": 0.001, "control_dt": 0.01, "episode_seconds": 10.0},
+    "physics": {
+        "dt": 0.001,
+        "control_dt": 0.01,
+        "episode_seconds": 10.0,
+        "gravity_mps2": 9.81,
+    },
     "vehicle": {
         "sprung_mass_kg": 1515.0,
         "inertia_kgm2": [222.8, 944.1, 1053.5],
@@ -27,6 +34,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "unsprung_mass_kg": [45.0, 45.0, 45.0, 45.0],
         "tire_radius_m": 0.3266,
         "body_height_m": 0.72,
+        "suspension_mount_height_m": -0.1,
+        "anti_roll_stiffness_nmprad": [0.0, 0.0],
         "suspension_stiffness_npm": [30000.0, 30000.0, 32000.0, 32000.0],
         "suspension_damping_nspm": [2200.0, 2200.0, 2400.0, 2400.0],
         "tire_stiffness_npm": [456715.5612] * 4,
@@ -91,7 +100,7 @@ def merge_config(base: dict, override: dict) -> dict:
 
 def validate_config(cfg: dict) -> None:
     p, v, a = cfg["physics"], cfg["vehicle"], cfg["actuator"]
-    for name in ("dt", "control_dt", "episode_seconds"):
+    for name in ("dt", "control_dt", "episode_seconds", "gravity_mps2"):
         if not np.isfinite(p[name]) or p[name] <= 0:
             raise ValueError(f"physics.{name} must be finite and positive")
     for ratio in (p["control_dt"] / p["dt"], p["episode_seconds"] / p["control_dt"]):
@@ -102,11 +111,31 @@ def validate_config(cfg: dict) -> None:
         "suspension_stiffness_npm",
         "suspension_damping_nspm",
         "tire_stiffness_npm",
-        "tire_damping_nspm",
     ):
         values = np.asarray(v[key], dtype=float)
         if values.shape != (4,) or not np.all(np.isfinite(values)) or np.any(values <= 0):
             raise ValueError(f"vehicle.{key} requires four finite positive values (FL FR RL RR)")
+    tire_damping = np.asarray(v["tire_damping_nspm"], dtype=float)
+    if (
+        tire_damping.shape != (4,)
+        or not np.all(np.isfinite(tire_damping))
+        or np.any(tire_damping < 0)
+    ):
+        raise ValueError("vehicle.tire_damping_nspm requires four finite nonnegative values")
+    anti_roll = np.asarray(v["anti_roll_stiffness_nmprad"], dtype=float)
+    if anti_roll.shape != (2,) or not np.all(np.isfinite(anti_roll)) or np.any(anti_roll < 0):
+        raise ValueError("vehicle.anti_roll_stiffness_nmprad requires two nonnegative values")
+    if not np.isfinite(v["suspension_mount_height_m"]):
+        raise ValueError("vehicle.suspension_mount_height_m must be finite")
+    if "tire_force_limit_n" in v:
+        tire_limit = np.asarray(v["tire_force_limit_n"], dtype=float)
+        if (
+            tire_limit.shape != (4,)
+            or not np.all(np.isfinite(tire_limit))
+            or np.any(tire_limit <= 0)
+        ):
+            raise ValueError("vehicle.tire_force_limit_n requires four finite positive values")
+    validate_force_tables(v)
     for key in (
         "sprung_mass_kg",
         "front_distance_m",
@@ -135,16 +164,22 @@ def validate_config(cfg: dict) -> None:
     total_distance = v["front_distance_m"] + v["rear_distance_m"]
     preload = (
         v["sprung_mass_kg"]
-        * 9.81
+        * p["gravity_mps2"]
         / (2 * total_distance)
         * np.array([v["rear_distance_m"]] * 2 + [v["front_distance_m"]] * 2)
     )
     wheel_height = v["tire_radius_m"] - (
-        preload + np.asarray(v["unsprung_mass_kg"]) * 9.81
+        preload + np.asarray(v["unsprung_mass_kg"]) * p["gravity_mps2"]
     ) / np.asarray(v["tire_stiffness_npm"])
-    if np.any(wheel_height <= 0) or np.any(v["body_height_m"] - 0.1 <= wheel_height):
+    if "tire_force_limit_n" in v and np.any(
+        preload + np.asarray(v["unsprung_mass_kg"]) * p["gravity_mps2"]
+        >= np.asarray(v["tire_force_limit_n"])
+    ):
+        raise ValueError("Static tire loads must be below their force limits")
+    upper_height = v["body_height_m"] + v["suspension_mount_height_m"]
+    if np.any(wheel_height <= 0) or np.any(upper_height <= wheel_height):
         raise ValueError("Static tire compression and suspension mounting heights are invalid")
-    if np.any(v["body_height_m"] - 0.1 - wheel_height <= v["travel_limit_m"]):
+    if np.any(upper_height - wheel_height <= v["travel_limit_m"]):
         raise ValueError("Static suspension length must exceed the permitted compression travel")
     for key in ("force_limit_n", "time_constant_s", "rate_limit_nps", "power_limit_w"):
         if not np.isfinite(a[key]) or a[key] <= 0:
@@ -180,16 +215,30 @@ def validate_config(cfg: dict) -> None:
             raise ValueError("Every training road scenario must be a mapping with a kind")
 
 
+def _read_config(path: Path, active: tuple[Path, ...] = ()) -> dict:
+    path = path.resolve()
+    if path in active:
+        raise ValueError(f"Configuration inheritance cycle: {path}")
+    with path.open(encoding="utf-8") as stream:
+        override = yaml.safe_load(stream) or {}
+    if not isinstance(override, dict):
+        raise ValueError(f"Configuration must be a mapping: {path}")
+    parent = override.pop("inherits", None)
+    if parent is None:
+        return override
+    if not isinstance(parent, str) or not parent.strip():
+        raise ValueError("inherits must name a parent YAML file")
+    return merge_config(_read_config(path.parent / parent, (*active, path)), override)
+
+
 def load_config(path: str | Path | dict | None = None) -> dict:
     cfg = deepcopy(DEFAULT_CONFIG)
     default_path = PROJECT / "configs" / "sedan_reference.yaml"
     if default_path.exists():
-        with default_path.open(encoding="utf-8") as stream:
-            cfg = merge_config(cfg, yaml.safe_load(stream) or {})
+        cfg = merge_config(cfg, _read_config(default_path))
     if isinstance(path, dict):
         cfg = merge_config(cfg, path)
     elif path is not None:
-        with Path(path).open(encoding="utf-8") as stream:
-            cfg = merge_config(cfg, yaml.safe_load(stream) or {})
+        cfg = merge_config(cfg, _read_config(Path(path)))
     validate_config(cfg)
     return cfg

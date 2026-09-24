@@ -59,6 +59,11 @@ python chrono/scripts/run_experiments.py --help
 七类配置、四轮曲线导出、混合训练和28-case评估见 [道路建模](docs/roads.md)。
 原有随机路面和20-case评估仍保留，旧结果不自动改用新道路。
 
+已提供从用户CarSim数据库核实并换算的D-Class Sedan独立配置，含非线性阻尼、前后限位和
+防倾杆，使用 `--config chrono/configs/carsim_dclass.yaml`；七路面混合训练使用
+`chrono/configs/carsim_dclass_seven_roads.yaml`。来源、换算和近似见
+[CarSim参数迁移](docs/carsim_parameters.md)。默认Sedan研究基准保持不变。
+
 ## Python 接口
 
 安装开发包后可直接调用：

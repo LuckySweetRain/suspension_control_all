@@ -13,6 +13,7 @@ from collections import deque
 import numpy as np
 import pychrono as ch
 
+from .constitutive import PiecewiseLinearCurve
 from .roads import FourWheelRoad
 from .terrain import RoadTerrain
 
@@ -31,10 +32,23 @@ class SuspensionForce(ch.ForceFunctor):
         extension = length - rest_length
         cfg = m.config["vehicle"]
         factor = cfg["rebound_damping_ratio"] if vel > 0 else cfg["compression_damping_ratio"]
-        force = m.preload[i] - m.ks[i] * extension - m.cs[i] * factor * vel
+        force = m.preload[i] - m.ks[i] * extension
+        force += (
+            m.damper_curves[i](-vel) if m.damper_curves is not None else -m.cs[i] * factor * vel
+        )
         force -= cfg["spring_cubic_npm3"] * extension**3
-        excess = max(0.0, abs(extension) - cfg["bump_stop_start_m"])
-        force -= np.sign(extension) * cfg["bump_stop_npm2"] * excess**2
+        if m.jounce_curves is not None:
+            force += m.jounce_curves[i](-extension) + m.rebound_curves[i](-extension)
+        else:
+            excess = max(0.0, abs(extension) - cfg["bump_stop_start_m"])
+            force -= np.sign(extension) * cfg["bump_stop_npm2"] * excess**2
+        if m.anti_roll_cross_stiffness[i // 2]:
+            other_index = i ^ 1
+            other_top = m.chassis.TransformPointLocalToParent(m.top_local[other_index])
+            other_length = (other_top - m.wheels[other_index].GetPos()).Length()
+            other_extension = other_length - m.suspensions[other_index].GetRestLength()
+            # Gradient of .5*k_cross*(extension_left-extension_right)^2.
+            force -= m.anti_roll_cross_stiffness[i // 2] * (extension - other_extension)
         return float(force + m.actuator_force[i])
 
 
@@ -49,7 +63,9 @@ class TireForce(ch.ForceFunctor):
         compression = m.radius + road[i] - length
         if compression <= 0:
             return 0.0
-        return float(max(0.0, m.kt[i] * compression + m.ct[i] * (road_vel[i] - vel)))
+        return float(
+            np.clip(m.kt[i] * compression + m.ct[i] * (road_vel[i] - vel), 0.0, m.tire_limit[i])
+        )
 
 
 class SevenDOFModel:
@@ -58,11 +74,32 @@ class SevenDOFModel:
         self.terrain = RoadTerrain(road, config)
         p, v, a = config["physics"], config["vehicle"], config["actuator"]
         self.dt = float(p["dt"])
+        self.gravity = float(p["gravity_mps2"])
         self.radius = float(v["tire_radius_m"])
         self.ks = np.asarray(v["suspension_stiffness_npm"], dtype=float)
         self.cs = np.asarray(v["suspension_damping_nspm"], dtype=float)
         self.kt = np.asarray(v["tire_stiffness_npm"], dtype=float)
         self.ct = np.asarray(v["tire_damping_nspm"], dtype=float)
+        self.tire_limit = np.asarray(v.get("tire_force_limit_n", [np.inf] * 4), dtype=float)
+        self.damper_curves = (
+            [PiecewiseLinearCurve(table, "velocity_mps") for table in v["damper_tables"]]
+            if v.get("damper_tables") is not None
+            else None
+        )
+        self.jounce_curves = (
+            [PiecewiseLinearCurve(table, "compression_m") for table in v["jounce_stop_tables"]]
+            if v.get("jounce_stop_tables") is not None
+            else None
+        )
+        self.rebound_curves = (
+            [PiecewiseLinearCurve(table, "compression_m") for table in v["rebound_stop_tables"]]
+            if v.get("rebound_stop_tables") is not None
+            else None
+        )
+        self.anti_roll_cross_stiffness = (
+            np.asarray(v["anti_roll_stiffness_nmprad"])
+            / (2 * np.array([v["front_half_track_m"], v["rear_half_track_m"]])) ** 2
+        )
         self.mu = np.asarray(v["unsprung_mass_kg"], dtype=float)
         front, rear = v["front_distance_m"], v["rear_distance_m"]
         self.xy = np.array(
@@ -74,12 +111,16 @@ class SevenDOFModel:
             ]
         )
         self.preload = (
-            v["sprung_mass_kg"] * 9.81 / (front + rear) * np.array([rear, rear, front, front]) / 2
+            v["sprung_mass_kg"]
+            * self.gravity
+            / (front + rear)
+            * np.array([rear, rear, front, front])
+            / 2
         )
-        self.static_load = self.preload + self.mu * 9.81
+        self.static_load = self.preload + self.mu * self.gravity
         self.wheel_z0 = self.radius - self.static_load / self.kt
         self.body_z0 = float(v["body_height_m"])
-        self.top_local = [ch.ChVector3d(x, y, -0.1) for x, y in self.xy]
+        self.top_local = [ch.ChVector3d(x, y, v["suspension_mount_height_m"]) for x, y in self.xy]
         self.actuator_force = np.zeros(4)
         self.delay_steps = int(round(a["delay_s"] / self.dt))
         self.delay_buffer = deque(np.zeros(4) for _ in range(self.delay_steps))
@@ -91,7 +132,7 @@ class SevenDOFModel:
         v = self.config["vehicle"]
         self.system = ch.ChSystemNSC()
         self.system.SetNumThreads(1, 1, 1)
-        self.system.SetGravitationalAcceleration(ch.ChVector3d(0, 0, -9.81))
+        self.system.SetGravitationalAcceleration(ch.ChVector3d(0, 0, -self.gravity))
         self.system.SetTimestepperType(ch.ChTimestepper.Type_EULER_IMPLICIT_LINEARIZED)
         self.system.SetSolverType(ch.ChSolver.Type_MINRES)
         solver = self.system.GetSolver()

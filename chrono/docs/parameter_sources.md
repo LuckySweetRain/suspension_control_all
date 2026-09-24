@@ -2,6 +2,9 @@
 
 核查日期：2026-09-22。对应配置：`configs/sedan_reference.yaml`。
 
+用户CarSim数据库的D-Class Sedan另有独立配置 `configs/carsim_dclass.yaml`；其来源、运动比
+换算、非线性表与限制见 [CarSim参数迁移](carsim_parameters.md)。本页继续描述默认Sedan基准。
+
 本模型采用 **Project Chrono 10.0.0 Sedan 的部分公开参数，加上明确声明的轮端等效工程假设**。它不是原 Sedan 多体模型的完整几何约化，也没有经过实车数据标定。`sedan_reference` 表示可追溯的研究参考车，不表示对具体量产车型的复刻。
 
 ## 1. 坐标、顺序与七自由度的定义
