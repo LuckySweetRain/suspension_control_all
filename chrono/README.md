@@ -64,6 +64,12 @@ python chrono/scripts/run_experiments.py --help
 `chrono/configs/carsim_dclass_seven_roads.yaml`。来源、换算和近似见
 [CarSim参数迁移](docs/carsim_parameters.md)。默认Sedan研究基准保持不变。
 
+被动、主动 Skyhook、LQR 的七道路比较使用独立的 **28 个验证 / 56 个测试工况**，
+在高度、空间长度和速度上变化，包含单侧激励。入口为
+`python chrono/scripts/compare_baselines.py --workers 8 --name <新实验名>`；
+先在验证集选择并冻结参数，再运行三控制器配对测试，保存物理步指标与对比图。
+实验设计、调参目标、机械功定义和工件说明见 [七道路基线对比](docs/baseline_comparison.md)。
+
 ## Python 接口
 
 安装开发包后可直接调用：

@@ -179,10 +179,17 @@ class ChronoSuspensionEnv(gym.Env):
         contact_loss = np.zeros(4)
         max_travel = np.zeros(4)
         square_sums = np.zeros(3)
+        absolute_peaks = np.zeros(3)
+        travel_square_sum = np.zeros(4)
+        travel_min = np.full(4, np.inf)
+        travel_max = np.full(4, -np.inf)
         force_square_sum = np.zeros(4)
         work_positive = np.zeros(4)
         work_negative = np.zeros(4)
         tire_min = np.full(4, np.inf)
+        tire_sum = np.zeros(4)
+        tire_square_sum = np.zeros(4)
+        tire_dynamic_ratio_square_sum = np.zeros(4)
         failed = False
         failure_reason = None
         for _ in range(self.substeps):
@@ -197,13 +204,23 @@ class ChronoSuspensionEnv(gym.Env):
                 break
             contact_loss += metrics["tire_load_n"] <= 0
             max_travel = np.maximum(max_travel, np.abs(metrics["suspension_travel_m"]))
-            square_sums += np.square(
+            body_signals = np.array(
                 [metrics["body_acc_mps2"], metrics["roll_rad"], metrics["pitch_rad"]]
             )
+            square_sums += body_signals**2
+            absolute_peaks = np.maximum(absolute_peaks, np.abs(body_signals))
+            travel_square_sum += metrics["suspension_travel_m"] ** 2
+            travel_min = np.minimum(travel_min, metrics["suspension_travel_m"])
+            travel_max = np.maximum(travel_max, metrics["suspension_travel_m"])
             force_square_sum += metrics["actuator_force_n"] ** 2
             work_positive += np.maximum(metrics["mechanical_power_w"], 0) * self.dt
             work_negative += np.minimum(metrics["mechanical_power_w"], 0) * self.dt
             tire_min = np.minimum(tire_min, metrics["tire_load_n"])
+            tire_sum += metrics["tire_load_n"]
+            tire_square_sum += metrics["tire_load_n"] ** 2
+            tire_dynamic_ratio_square_sum += (
+                metrics["tire_load_n"] / self.model.static_load - 1.0
+            ) ** 2
             costs.append(self._cost(metrics, action))
             if (
                 np.max(np.abs(q[1:3])) > 0.5
@@ -234,10 +251,20 @@ class ChronoSuspensionEnv(gym.Env):
             "body_acc_squared_mean": float(square_sums[0] / counted_steps),
             "roll_squared_mean": float(square_sums[1] / counted_steps),
             "pitch_squared_mean": float(square_sums[2] / counted_steps),
+            "body_acc_peak_mps2": float(absolute_peaks[0]),
+            "roll_peak_rad": float(absolute_peaks[1]),
+            "pitch_peak_rad": float(absolute_peaks[2]),
+            "suspension_travel_squared_mean": travel_square_sum / counted_steps,
+            # TSDA length minus its static length: negative compression, positive extension.
+            "suspension_travel_min_m": travel_min,
+            "suspension_travel_max_m": travel_max,
             "actuator_force_squared_mean": force_square_sum / counted_steps,
             "mechanical_work_positive_j": work_positive,
             "mechanical_work_negative_j": work_negative,
             "tire_load_min_n": tire_min,
+            "tire_load_mean_n": tire_sum / counted_steps,
+            "tire_load_squared_mean": tire_square_sum / counted_steps,
+            "tire_dynamic_load_ratio_squared_mean": tire_dynamic_ratio_square_sum / counted_steps,
             "duration_s": len(costs) * self.dt,
         }
         if failed:
@@ -260,7 +287,10 @@ class ChronoSuspensionEnv(gym.Env):
             force = np.zeros(4)
         elif name == "skyhook":
             sprung_corner_velocity = self._jac[:, :3] @ qd[:3]
-            force = -3000.0 * sprung_corner_velocity
+            damping = (
+                self.config.get("controllers", {}).get("skyhook", {}).get("damping_nspm", 3000.0)
+            )
+            force = -damping * sprung_corner_velocity
         elif name == "lqr":
             if self._gain is None:
                 self._gain = lqr_gain(self.config)

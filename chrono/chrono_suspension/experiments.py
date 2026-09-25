@@ -68,6 +68,17 @@ def experiment_groups() -> list[dict[str, Any]]:
 def _case_metrics(
     samples: list[dict[str, Any]], control_dt: float, step_infos: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
+    """Integrate physical metrics in FL, FR, RL, RR order.
+
+    New environment records resolve every physics substep. Older records retain
+    control-rate fallbacks where the corresponding substep statistic is absent.
+    Positive and absorbed mechanical work are integrated separately; neither is
+    an electrical-energy estimate. Travel is positive in suspension extension.
+    """
+    if not samples:
+        raise ValueError("Physical metrics require at least one sample.")
+    if step_infos is not None and len(step_infos) != len(samples):
+        raise ValueError("Physical samples and step infos must have matching lengths.")
     required = (
         "body_acc_mps2",
         "roll_rad",
@@ -87,24 +98,60 @@ def _case_metrics(
         return float(np.sqrt(np.mean(np.square(array))))
 
     power = arrays["mechanical_power_w"]
+    travel = arrays["suspension_travel_m"]
+    tire_load = arrays["tire_load_n"]
+    positive_work = np.maximum(power, 0.0).sum(axis=0) * control_dt
+    negative_work = -np.minimum(power, 0.0).sum(axis=0) * control_dt
     result = {
         "body_acc_rms_mps2": rms(arrays["body_acc_mps2"]),
         "roll_rms_rad": rms(arrays["roll_rad"]),
         "pitch_rms_rad": rms(arrays["pitch_rad"]),
-        "suspension_travel_peak_m": float(np.abs(arrays["suspension_travel_m"]).max()),
-        "suspension_travel_rms_m": rms(arrays["suspension_travel_m"]),
-        "tire_load_min_n": float(arrays["tire_load_n"].min()),
-        "tire_load_std_n_per_wheel": arrays["tire_load_n"].std(axis=0).tolist(),
-        "wheel_unloaded_fraction": float(np.mean(arrays["tire_load_n"] <= 0.0)),
+        "body_acc_peak_mps2": float(np.abs(arrays["body_acc_mps2"]).max()),
+        "roll_peak_rad": float(np.abs(arrays["roll_rad"]).max()),
+        "pitch_peak_rad": float(np.abs(arrays["pitch_rad"]).max()),
+        "suspension_travel_peak_m": float(np.abs(travel).max()),
+        "suspension_travel_rms_m": rms(travel),
+        "suspension_travel_rms_per_wheel_m": np.sqrt(np.mean(travel**2, axis=0)).tolist(),
+        "suspension_travel_peak_per_wheel_m": np.abs(travel).max(axis=0).tolist(),
+        "suspension_travel_min_per_wheel_m": travel.min(axis=0).tolist(),
+        "suspension_travel_max_per_wheel_m": travel.max(axis=0).tolist(),
+        "tire_load_min_n": float(tire_load.min()),
+        "tire_load_min_per_wheel_n": tire_load.min(axis=0).tolist(),
+        "tire_load_std_n_per_wheel": tire_load.std(axis=0).tolist(),
+        "wheel_unloaded_fraction": float(np.mean(tire_load <= 0.0)),
+        "wheel_unloaded_fraction_per_wheel": np.mean(tire_load <= 0.0, axis=0).tolist(),
         "actuator_force_rms_n": rms(arrays["actuator_force_n"]),
-        "positive_mechanical_work_j": float(np.maximum(power, 0.0).sum() * control_dt),
-        "negative_mechanical_work_magnitude_j": float(-np.minimum(power, 0.0).sum() * control_dt),
+        "positive_mechanical_work_per_wheel_j": positive_work.tolist(),
+        "negative_mechanical_work_magnitude_per_wheel_j": negative_work.tolist(),
     }
+    if step_infos and all("static_tire_load_n" in info for info in step_infos):
+        static_loads = np.asarray([info["static_tire_load_n"] for info in step_infos], dtype=float)
+        if not np.isfinite(static_loads).all() or np.any(static_loads <= 0):
+            raise FloatingPointError("Static tire loads must be finite and positive.")
+        if not np.allclose(static_loads, static_loads[0], rtol=0, atol=1e-10):
+            raise ValueError("Static tire loads must remain fixed within an evaluation case.")
+        result["tire_dynamic_load_rms_ratio_per_wheel"] = np.sqrt(
+            np.mean((tire_load / static_loads - 1.0) ** 2, axis=0)
+        ).tolist()
     if step_infos and all("substep_metrics" in info for info in step_infos):
         substeps = [info["substep_metrics"] for info in step_infos]
         durations = np.asarray([row["duration_s"] for row in substeps], dtype=float)
-        if durations.sum() <= 0 or not np.isfinite(durations).all():
+        if durations.sum() <= 0 or not np.isfinite(durations).all() or np.any(durations < 0):
             raise FloatingPointError("Invalid integrated duration in physical metrics.")
+        # A first-substep failure has no valid samples and may carry +/-inf
+        # initial extrema; it contributes no duration and must not poison a case.
+        valid = durations > 0
+        substeps = [row for row, keep in zip(substeps, valid, strict=True) if keep]
+        valid_infos = [row for row, keep in zip(step_infos, valid, strict=True) if keep]
+        durations = durations[valid]
+
+        def weighted_mean(source: str) -> np.ndarray:
+            return np.average(
+                np.asarray([row[source] for row in substeps], dtype=float),
+                axis=0,
+                weights=durations,
+            )
+
         for output, source in (
             ("body_acc_rms_mps2", "body_acc_squared_mean"),
             ("roll_rms_rad", "roll_squared_mean"),
@@ -113,23 +160,53 @@ def _case_metrics(
         ):
             squared = np.asarray([np.mean(row[source]) for row in substeps], dtype=float)
             result[output] = float(np.sqrt(np.average(squared, weights=durations)))
-        result["positive_mechanical_work_j"] = float(
-            sum(np.sum(row["mechanical_work_positive_j"]) for row in substeps)
+        positive_work = np.sum([row["mechanical_work_positive_j"] for row in substeps], axis=0)
+        negative_work = -np.sum([row["mechanical_work_negative_j"] for row in substeps], axis=0)
+        result["positive_mechanical_work_per_wheel_j"] = positive_work.tolist()
+        result["negative_mechanical_work_magnitude_per_wheel_j"] = negative_work.tolist()
+        minimum_load = np.min([row["tire_load_min_n"] for row in substeps], axis=0)
+        result["tire_load_min_per_wheel_n"] = minimum_load.tolist()
+        result["tire_load_min_n"] = float(minimum_load.min())
+        peak_travel = np.max([info["max_travel_m"] for info in valid_infos], axis=0)
+        result["suspension_travel_peak_per_wheel_m"] = peak_travel.tolist()
+        result["suspension_travel_peak_m"] = float(peak_travel.max())
+        unloading = np.average(
+            [info["contact_loss_fraction"] for info in valid_infos], axis=0, weights=durations
         )
-        result["negative_mechanical_work_magnitude_j"] = float(
-            -sum(np.sum(row["mechanical_work_negative_j"]) for row in substeps)
-        )
-        result["tire_load_min_n"] = float(min(np.min(row["tire_load_min_n"]) for row in substeps))
-        result["suspension_travel_peak_m"] = float(
-            max(np.max(info["max_travel_m"]) for info in step_infos)
-        )
-        result["wheel_unloaded_fraction"] = float(
-            np.average(
-                [np.mean(info["contact_loss_fraction"]) for info in step_infos], weights=durations
+        result["wheel_unloaded_fraction_per_wheel"] = unloading.tolist()
+        result["wheel_unloaded_fraction"] = float(unloading.mean())
+        for name in ("body_acc_peak_mps2", "roll_peak_rad", "pitch_peak_rad"):
+            if all(name in row for row in substeps):
+                result[name] = float(max(row[name] for row in substeps))
+        if all("suspension_travel_squared_mean" in row for row in substeps):
+            travel_squared_mean = weighted_mean("suspension_travel_squared_mean")
+            result["suspension_travel_rms_per_wheel_m"] = np.sqrt(travel_squared_mean).tolist()
+            result["suspension_travel_rms_m"] = float(np.sqrt(travel_squared_mean.mean()))
+        for source, output, reduction in (
+            ("suspension_travel_min_m", "suspension_travel_min_per_wheel_m", np.min),
+            ("suspension_travel_max_m", "suspension_travel_max_per_wheel_m", np.max),
+        ):
+            if all(source in row for row in substeps):
+                result[output] = reduction([row[source] for row in substeps], axis=0).tolist()
+        if all("tire_load_squared_mean" in row and "tire_load_mean_n" in row for row in substeps):
+            variance = (
+                weighted_mean("tire_load_squared_mean") - weighted_mean("tire_load_mean_n") ** 2
             )
-        )
-        if not all(np.isfinite(value).all() for value in result.values()):
-            raise FloatingPointError("Nonfinite integrated physical metrics.")
+            result["tire_load_std_n_per_wheel"] = np.sqrt(np.maximum(variance, 0)).tolist()
+        if all("tire_dynamic_load_ratio_squared_mean" in row for row in substeps):
+            result["tire_dynamic_load_rms_ratio_per_wheel"] = np.sqrt(
+                weighted_mean("tire_dynamic_load_ratio_squared_mean")
+            ).tolist()
+    if step_infos and all("static_tire_load_n" in info for info in step_infos):
+        result["tire_load_min_ratio_per_wheel"] = (
+            np.asarray(result["tire_load_min_per_wheel_n"]) / static_loads[0]
+        ).tolist()
+    result["positive_mechanical_work_j"] = float(positive_work.sum())
+    result["negative_mechanical_work_magnitude_j"] = float(negative_work.sum())
+    result["absolute_mechanical_work_j"] = float(positive_work.sum() + negative_work.sum())
+    result["net_mechanical_work_j"] = float(positive_work.sum() - negative_work.sum())
+    if not all(np.isfinite(value).all() for value in result.values()):
+        raise FloatingPointError("Nonfinite integrated physical metrics.")
     return result
 
 
@@ -255,7 +332,7 @@ def evaluate_cases(
         },
         "aggregation_note": "Means exclude terminated/incomplete cases; always report failure counts alongside them.",
         "energy_note": "Mechanical actuator work only; not electrical consumption or recovered battery energy.",
-        "sampling_note": "RMS acceleration/attitude/force, work, travel peaks, minimum load and unloading use physics substeps; travel RMS and load std use control-rate samples.",
+        "sampling_note": "All current physical RMS, peaks, tire statistics, unloading fractions and actuator work use physics substeps, weighted by valid duration. Per-wheel values are FL, FR, RL, RR. Travel is negative in compression and positive in extension. Older records use control-rate fallbacks for missing substep statistics.",
     }
     write_json(output_dir / "summary.json", summary)
     with (output_dir / "cases.csv").open("w", newline="", encoding="utf-8") as stream:

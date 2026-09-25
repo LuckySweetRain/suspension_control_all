@@ -100,6 +100,15 @@ def merge_config(base: dict, override: dict) -> dict:
 
 def validate_config(cfg: dict) -> None:
     p, v, a = cfg["physics"], cfg["vehicle"], cfg["actuator"]
+    controllers = cfg.get("controllers", {})
+    for family, parameter, default in (
+        ("skyhook", "damping_nspm", 3000.0),
+        ("lqr", "r_weight", 0.001),
+        ("lqr", "body_velocity_weight_scale", 1.0),
+    ):
+        value = controllers.get(family, {}).get(parameter, default)
+        if not np.isfinite(value) or value <= 0:
+            raise ValueError(f"controllers.{family}.{parameter} must be finite and positive")
     for name in ("dt", "control_dt", "episode_seconds", "gravity_mps2"):
         if not np.isfinite(p[name]) or p[name] <= 0:
             raise ValueError(f"physics.{name} must be finite and positive")

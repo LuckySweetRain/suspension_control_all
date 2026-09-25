@@ -66,7 +66,10 @@ def lqr_gain(config: dict) -> np.ndarray:
     from scipy.linalg import solve_continuous_are
 
     a, b, _ = linear_matrices(config)
-    q = np.diag([1e3, 1e4, 1e4, 1e3, 1e3, 1e3, 1e3, 3e4, 5e4, 5e4, 1e2, 1e2, 1e2, 1e2])
-    r = np.eye(4) * 0.001
+    settings = config.get("controllers", {}).get("lqr", {})
+    weights = np.array([1e3, 1e4, 1e4, 1e3, 1e3, 1e3, 1e3, 3e4, 5e4, 5e4, 1e2, 1e2, 1e2, 1e2])
+    weights[7:10] *= settings.get("body_velocity_weight_scale", 1.0)
+    q = np.diag(weights)
+    r = np.eye(4) * settings.get("r_weight", 0.001)
     p = solve_continuous_are(a, b, q, r)
     return np.linalg.solve(r, b.T @ p)

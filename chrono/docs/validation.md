@@ -201,3 +201,31 @@ RL约0.385～1.048 m/s²，因此没有证明舒适性提升或训练收敛。
 
 批量矩阵、预算和报告入口见 `training.md`。短训只证明流程可用，
 不能证明策略收敛、实车安全或模型比CarSim更准确。参数标定边界见 `parameter_sources.md`。
+
+## CarSim D-Class 七道路基线对比（2026-09-25）
+
+实际运行 `python chrono/scripts/compare_baselines.py --workers 8 --name dclass_seven_20260925`。
+28 个验证工况 × 11 个候选、56 个测试工况 × 3 个冻结控制器，共 476 回合，
+每回合 10 s；所有回合完整结束，没有提前终止。确定性道路改变高度、空间长度和速度，
+验证/测试参数与随机种子独立，测试结果未参与调参。
+
+工件为 `results/chrono/comparison/dclass_seven_20260925/`，详细结果和取舍见
+[七道路基线对比](baseline_comparison.md)。LQR 加速度更低但姿态和行程 RMS 恶化；
+Skyhook 姿态和行程更好但卸载比例升高。三者均未超过 90 mm 研究行程，均发生卸载。
+
+本次实际检查：
+
+- `check_comparison.py`：84 个道路设计、因素组合、时序与确定性种子不变性。
+- `check_metrics.py --with-chrono --config chrono/configs/carsim_dclass.yaml`：
+  25 项解析指标、不等时长积分、机械正负功、兼容记录及真实 Chrono 100 步。
+- `check_reference_controllers.py`：11 候选的符号、相同被控对象、机械及含滞后/延迟的局部线性稳定性。
+- `check_model.py --config chrono/configs/carsim_dclass.yaml`：15 项物理与 Gym/SB3 检查通过。
+- `check_comparison_results.py`：653 项工件检查通过，包含计划/冻结/源文件校验、
+  308+168 回合、168 份时序、实际道路配对、独立得分重算与机械功恒等式。
+- `python -m ruff check chrono`、`python -m ruff format --check chrono` 通过。
+- 外层 `python scripts/check_project.py` 全部通过，报告
+  `results/project_checks/20260925_093740_971934/report.json`。
+
+未运行 pytest。数值步长检查为被动凸包的 1 ms 对 0.5 ms，其加速度 RMS 相差约 1.0%；
+这不是全部主动控制与所有道路的统一误差界。完整结果汇总采用 0.5 ms 物理子步，
+可视时序仅为 10 ms 控制步，图中稀疏峰值不替代物理步统计。
