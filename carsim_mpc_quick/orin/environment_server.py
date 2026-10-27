@@ -62,6 +62,10 @@ def serve():
                                 fallback=fallback,
                                 preview_source="depth_image",
                                 road_mask_mode=vision.mask_mode,
+                                passive_baseline_config=dict(
+                                    damper_gain_N_per_mmps=float(controller.c["carsim_damper_gain"]),
+                                    corner_force_limit_N=float(controller.c["corner_force_limit"]),
+                                ),
                                 camera_frame=vision.frame,
                                 valid_road_pixels=vision.valid_points,
                                 image_preview_w=preview[0].tolist(),

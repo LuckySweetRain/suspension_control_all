@@ -62,8 +62,12 @@ def pack_vision(depth, semantic, terrain, sim_time):
         semantic=base64.b64encode(zlib.compress(bytes(semantic.raw_data), 1)).decode(),
     )
     if terrain.procedural_road:
+        xmin, xmax, ymin, ymax = terrain.road_bounds
         corners = (
-            np.array([[0, 0, 0, 1], [160, 0, 0, 1], [0, 4, 0, 1], [160, 4, 0, 1]]) @ world_to_cs.T
+            np.array(
+                [[xmin, ymin, 0, 1], [xmax, ymin, 0, 1], [xmin, ymax, 0, 1], [xmax, ymax, 0, 1]]
+            )
+            @ world_to_cs.T
         )
         packet["road_mask_mode"] = "opendrive_test_road"
         packet["road_roi_carsim"] = [

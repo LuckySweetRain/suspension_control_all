@@ -7,9 +7,10 @@ import math
 
 
 class CarlaTerrain:
-    def __init__(self, world, carla, spawn, procedural_road=False):
+    def __init__(self, world, carla, spawn, procedural_road=False, road_bounds=(0, 160, 0, 4)):
         self.world, self.carla, self.spawn = world, carla, spawn
         self.procedural_road = procedural_road
+        self.road_bounds = road_bounds
         self.angle = math.radians(spawn.rotation.yaw)
         self.cs, self.sn = math.cos(self.angle), math.sin(self.angle)
         self.cache = {}
@@ -33,7 +34,8 @@ class CarlaTerrain:
         )
 
     def height_world(self, x, y):
-        if self.procedural_road and not (0 <= x <= 160 and 0 <= y <= 4):
+        xmin, xmax, ymin, ymax = self.road_bounds
+        if self.procedural_road and not (xmin <= x <= xmax and ymin <= y <= ymax):
             raise RuntimeError("Terrain query outside the generated test-road footprint")
         hits = self.world.cast_ray(
             self.carla.Location(x=x, y=y, z=self.spawn.location.z + 8),

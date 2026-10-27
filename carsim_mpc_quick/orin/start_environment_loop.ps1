@@ -4,6 +4,7 @@ param(
     [string]$OrinHost = "192.168.50.2",
     [ValidateSet("town", "wave", "bump", "pothole", "combined")][string]$RoadProfile = "town",
     [switch]$NoVisualize,
+    [switch]$Compare,
     [switch]$CheckOnly
 )
 
@@ -18,6 +19,7 @@ $dependencyCheck = "import numpy; print('NumPy import OK')"
 if (-not $NoVisualize) {
     $dependencyCheck += "; from PIL import Image,ImageTk; import tkinter; root=tkinter.Tk(); root.withdraw(); image=ImageTk.PhotoImage(Image.new('RGB',(8,8))); root.update(); root.destroy(); print('Pillow and Tk rendering OK')"
 }
+if ($Compare -and $NoVisualize) { $dependencyCheck += "; from PIL import Image; print('Pillow import OK')" }
 & $condaCommand run --no-capture-output -n carla0911 python -c $dependencyCheck
 if ($LASTEXITCODE -ne 0) {
     throw "carla0911 dependency check failed. See orin/ENVIRONMENT_LOOP.md for the pinned environment and Pillow DLL repair."
@@ -60,10 +62,19 @@ $runArguments = @(
     "--spawn", $SpawnIndex, "--orin-host", $OrinHost, "--road-profile", $RoadProfile
 )
 if (-not $NoVisualize) { $runArguments += "--visualize" }
+if ($Compare) {
+    if ($RoadProfile -eq "town") { $RoadProfile = "combined" }
+    $runArguments = @(
+        "run", "--no-capture-output", "-n", "carla0911", "python",
+        "carsim_mpc_quick/orin/run_comparison.py", "--seconds", $Seconds.ToString([cultureinfo]::InvariantCulture),
+        "--orin-host", $OrinHost, "--road-profile", $RoadProfile
+    )
+    if ($NoVisualize) { $runArguments += "--no-visualize" }
+}
 Push-Location -LiteralPath $projectRoot
 try {
     & $condaCommand @runArguments
-    if ($LASTEXITCODE -ne 0) { throw "Simulation failed. The report and completed trace remain under results/carla_environment/." }
+    if ($LASTEXITCODE -ne 0) { throw "Simulation failed. Reports remain under results/carla_environment/ or results/carla_comparison/." }
 } finally {
     Pop-Location
 }

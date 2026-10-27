@@ -1,5 +1,8 @@
 # 波浪路、减速带与凹陷测试路
 
+左右同步的主动/被动悬架对照：`./carsim_mpc_quick/orin/start_environment_loop.ps1 -Compare`，
+详见 [COMPARISON.md](COMPARISON.md)。
+
 本入口使用 CARLA 0.9.11 的 OpenDRIVE standalone 功能，在当前 Windows 运行包中生成真实的
 道路网格，无需先搭建 UE 编辑器工程。它支持本次纵向高程试验，不等于能够动态生成任意三维
 越野网格或松散砂石。官方机制见：

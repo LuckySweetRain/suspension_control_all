@@ -7,6 +7,7 @@ the controller still receives depth images and tyres query the CARLA scene mesh.
 
 from __future__ import annotations
 
+import copy
 import math
 import xml.etree.ElementTree as ET
 
@@ -49,7 +50,7 @@ def specification(profile):
     )
 
 
-def opendrive(profile):
+def opendrive(profile, parallel=False):
     if profile not in PROFILES:
         raise ValueError("Unknown rough-road profile")
     root = ET.Element("OpenDRIVE")
@@ -116,14 +117,20 @@ def opendrive(profile):
     ET.SubElement(
         lane, "roadMark", sOffset="0", type="solid", weight="standard", color="white", width="0.12"
     )
+    if parallel:
+        second = copy.deepcopy(road)
+        second.set("id", "2")
+        second.set("name", "Identical passive comparison track")
+        second.find("planView/geometry").set("y", "-8")
+        root.append(second)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
 
 
-def generate_world(client, carla, profile, output):
+def generate_world(client, carla, profile, output, parallel=False):
     """Reset an otherwise empty world; persist the exact mesh input for replay."""
     if list(client.get_world().get_actors().filter("vehicle.*")):
         raise RuntimeError("Another vehicle simulation is running; cannot replace its world")
-    text = opendrive(profile)
+    text = opendrive(profile, parallel=parallel)
     (output / "road.xodr").write_text(text, encoding="utf-8")
     world = client.generate_opendrive_world(
         text,
@@ -139,14 +146,16 @@ def generate_world(client, carla, profile, output):
     return world
 
 
-def verify_mesh(world, carla, profile, output):
+def verify_mesh(
+    world, carla, profile, output, center_y=LANE_CENTER_Y_M, filename="road_mesh_check.json"
+):
     """Independent vertical scene intersections against the authored profile."""
     rows = []
     for index in range(1, 601):
         station = index * 0.2
         hits = world.cast_ray(
-            carla.Location(station, LANE_CENTER_Y_M, 2),
-            carla.Location(station, LANE_CENTER_Y_M, -2),
+            carla.Location(station, center_y, 2),
+            carla.Location(station, center_y, -2),
         )
         if not hits:
             raise RuntimeError("Generated road has no collision surface at station " + str(station))
@@ -162,12 +171,11 @@ def verify_mesh(world, carla, profile, output):
 
     report = dict(
         passed=True,
+        center_y_m=float(center_y),
         samples=len(rows),
         max_height_error_m=maximum,
         min_height_m=min(row["mesh_m"] for row in rows),
         max_height_m=max(row["mesh_m"] for row in rows),
     )
-    (output / "road_mesh_check.json").write_text(
-        json.dumps(dict(report=report, samples=rows), indent=2)
-    )
+    (output / filename).write_text(json.dumps(dict(report=report, samples=rows), indent=2))
     return report
