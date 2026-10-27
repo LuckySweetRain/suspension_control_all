@@ -10,7 +10,7 @@ if nargin < 2 || isempty(deployment_mode)
 end
 cfg0.active_scale = active_scale;
 cfg0.deployment.mode = char(deployment_mode);
-if ~isfile(cfg0.model_file), build_carsim_mpc_model(); end
+require_carsim_model(cfg0);
 addpath(cfg0.solver_library_dir);
 
 if strcmpi(cfg0.deployment.mode,'ideal_force')

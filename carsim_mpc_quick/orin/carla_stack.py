@@ -9,150 +9,20 @@ or image-derived road preview. Road inputs remain the validated CarSim dataset.
 from __future__ import annotations
 
 import argparse
-import ctypes as ct
 import hashlib
 import json
 import math
-import os
-import queue
 import re
-import socket
-import sys
 import time
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-CARLA_ROOT = Path("E:/Desktop/workspace/CARLA_0.9.11/WindowsNoEditor")
-DATABASE = Path("E:/Desktop/workspace/CarSim_database/carsim_active_suspension")
-
-
-class CarSim:
-    """One DLL owner; keep original 8 imports / 77 exports and append 4 pose exports."""
-
-    def __init__(self, output, terrain=None, contact=False):
-        text = (ROOT / "results/orin/runtime_run.par").read_text(encoding="utf-8")
-        if terrain is not None:
-            road = re.search(
-                r"(?ms)^ENTER_PARSFILE Roads\\3D_Road[^\n]*\n.*?^EXIT_PARSFILE Roads\\3D_Road[^\n]*\.par[ \t]*$",
-                text,
-            )
-            if road is None:
-                raise RuntimeError("Expected one expanded CarSim road block")
-            path = re.search(
-                r"(?ms)^ENTER_PARSFILE Roads\\BuilderSegment[^\n]*\n.*?^EXIT_PARSFILE Roads\\BuilderSegment[^\n]*",
-                road.group(),
-            )
-            if path is None:
-                raise RuntimeError("Missing independent driver path")
-            text = text[: road.start()] + path.group() + text[road.end() :]
-        self.n_import = 9 if contact else 8
-        if contact:
-            text = re.sub(r"(?m)^PORTS_IMP\s+1,8\s*$", "PORTS_IMP 1,9", text)
-            text = re.sub(r"(?m)^END\s*$", "IMPORT IMP_FX_AERO Add 0.0\nEND", text)
-        text = re.sub(r"(?m)^PORTS_EXP\s+1,77\s*$", "PORTS_EXP 1,81", text)
-        text = re.sub(
-            r"(?m)^END\s*$", "EXPORT Xcg_TM\nEXPORT Ycg_TM\nEXPORT Yaw\nEXPORT Roll\nEND", text
-        )
-        par = output / "runtime.par"
-        par.write_text(text, encoding="utf-8")
-        sim = output / "runtime.sim"
-        prefix = output / "LastRun"
-        dll = "E:/Carsim2020.0_Prog/Programs/solvers/carsim_64.dll"
-        sim.write_text(
-            f"SIMFILE\nINPUT {par}\nECHO {prefix}_echo.par\nLOGFILE {prefix}_log.txt\n"
-            f"FINAL {prefix}_end.par\nERDFILE {prefix}.vs\nPROGDIR E:/Carsim2020.0_Prog/\n"
-            f"DATADIR {DATABASE}/\nVEHICLE_CODE i_i\nEXT_MODEL_STEP 0.001\n"
-            f"PORTS_IMP 1,{self.n_import}\nPORTS_EXP 1,81\nDLLFILE {dll}\nEND\n",
-            encoding="utf-8",
-        )
-        self.dll = ct.CDLL(dll)
-        self.dll.vs_set_opt_error_dialog(ct.c_int(0))
-        self.dll.vs_get_error_message.restype = ct.c_char_p
-        self.terrain = terrain
-        if terrain is not None:
-            terrain.install(self.dll)
-        self.dll.vs_read_configuration.argtypes = [
-            ct.c_char_p,
-            ct.POINTER(ct.c_int32),
-            ct.POINTER(ct.c_int64),
-            ct.POINTER(ct.c_double),
-            ct.POINTER(ct.c_double),
-            ct.POINTER(ct.c_double),
-        ]
-        self.dll.vs_integrate_io.argtypes = [
-            ct.c_double,
-            ct.POINTER(ct.c_double),
-            ct.POINTER(ct.c_double),
-        ]
-        self.dll.vs_copy_export_vars.argtypes = [ct.POINTER(ct.c_double)]
-        self.dll.vs_terminate_run.argtypes = [ct.c_double]
-        ni, ne = ct.c_int32(), ct.c_int64()
-        start, stop, dt = ct.c_double(), ct.c_double(), ct.c_double()
-        old = os.getcwd()
-        try:
-            os.chdir(str(DATABASE))
-            self.dll.vs_read_configuration(
-                str(sim).encode(),
-                ct.byref(ni),
-                ct.byref(ne),
-                ct.byref(start),
-                ct.byref(stop),
-                ct.byref(dt),
-            )
-        finally:
-            os.chdir(old)
-        self.t = start.value
-        self.check()
-        if (ni.value, ne.value) != (self.n_import, 81) or abs(dt.value - 0.001) > 1e-10:
-            self.close()
-            raise RuntimeError(f"Unexpected CarSim I/O or step: {(ni.value, ne.value, dt.value)}")
-        self.values = (ct.c_double * 81)()
-        self.dll.vs_copy_export_vars(self.values)
-        self.t = start.value
-        self.initial = list(self.values)
-        if terrain is not None:
-            if not terrain.origin_calibrated:
-                terrain.origin_cs = (self.initial[77], self.initial[78])
-                terrain.cache.clear()
-            terrain.install(self.dll)
-
-    def check(self):
-        if self.terrain is not None:
-            self.terrain.check()
-        if self.dll.vs_error_occurred():
-            raise RuntimeError(self.dll.vs_get_error_message().decode(errors="replace"))
-
-    def step(self, forces, contact_force=0):
-        values = list(forces) + ([contact_force] if self.n_import == 9 else [])
-        inputs = (ct.c_double * self.n_import)(*values)
-        for _ in range(10):
-            self.t += 0.001
-            status = self.dll.vs_integrate_io(self.t, inputs, self.values)
-            self.check()
-            if status:
-                raise RuntimeError(f"CarSim integration stopped: {status} at {self.t}")
-        if not all(math.isfinite(v) for v in self.values):
-            raise RuntimeError("Nonfinite CarSim state")
-        return list(self.values)
-
-    def close(self):
-        self.dll.vs_terminate_run(self.t)
-
-
-def image_at(images, frame):
-    deadline = time.monotonic() + 15
-    while True:
-        image = images.get(timeout=max(0.01, deadline - time.monotonic()))
-        if image.frame == frame:
-            return image
-        if image.frame > frame or time.monotonic() > deadline:
-            raise RuntimeError("Camera/frame synchronization failed")
+from runtime.carsim import CarSim
+from runtime.paths import CARLA_ROOT, ROOT, load_carla
+from runtime.protocol import OrinConnection
+from runtime.sensors import image_at, spawn_camera
 
 
 def run(args):
-    egg = CARLA_ROOT / "PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg"
-    sys.path.insert(0, str(egg))
-    import carla
+    carla = load_carla()
 
     output = ROOT / "results/carla_stack" / (args.mode + "_" + time.strftime("%Y%m%d_%H%M%S"))
     output.mkdir(parents=True, exist_ok=False)
@@ -183,18 +53,16 @@ def run(args):
         spawn = world.get_map().get_spawn_points()[0]
         vehicle = world.spawn_actor(bp, spawn)
         actors.append(vehicle)
-        camera_bp = world.get_blueprint_library().find("sensor.camera.rgb")
-        camera_bp.set_attribute("image_size_x", "640")
-        camera_bp.set_attribute("image_size_y", "360")
-        camera_bp.set_attribute("sensor_tick", "0.0")
-        camera = world.spawn_actor(
-            camera_bp,
+        camera, images = spawn_camera(
+            world,
+            carla,
+            "rgb",
             carla.Transform(carla.Location(x=-6, z=3), carla.Rotation(pitch=-12)),
+            640,
+            360,
             attach_to=vehicle,
         )
         actors.append(camera)
-        images = queue.Queue()
-        camera.listen(images.put)
         first = image_at(images, world.tick())
         first.save_to_disk(str(output / "first.png"))
         if args.visualize:
@@ -223,23 +91,14 @@ def run(args):
         if args.mode == "triple":
             vehicle.set_simulate_physics(False)
             solver = CarSim(output)
-            connection = socket.create_connection((args.orin_host, 55001), timeout=5)
-            connection.settimeout(2)
-            connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            incoming = connection.makefile("rb")
+            connection = OrinConnection(args.orin_host, 55001, timeout=2, connect_timeout=5)
             digest = hashlib.sha256(
                 (ROOT / "results/orin/quick_mpc_data.mat").read_bytes()
             ).hexdigest()
             values = solver.initial
             for seq in range(round(args.seconds / 0.01)):
                 request = {"version": 1, "seq": seq, "time": seq * 0.01, "exports": values[:77]}
-                begin = time.perf_counter()
-                connection.sendall((json.dumps(request, allow_nan=False) + "\n").encode())
-                line = incoming.readline(32769)
-                if len(line) > 32768 or not line.endswith(b"\n"):
-                    raise RuntimeError("Invalid Orin frame")
-                reply = json.loads(line)
-                elapsed = (time.perf_counter() - begin) * 1000
+                reply, elapsed = connection.exchange(request)
                 max_rtt = max(max_rtt, elapsed)
                 if reply["version"] != 1 or reply["seq"] != seq or reply["sha256"] != digest:
                     raise RuntimeError("Orin sequence/data mismatch")

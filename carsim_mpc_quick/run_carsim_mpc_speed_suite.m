@@ -11,7 +11,7 @@ speeds_kph = double(speeds_kph(:));
 assert(all(isfinite(speeds_kph) & speeds_kph > 0), ...
     'Vehicle speeds must be finite and positive.');
 cfg0.deployment.mode = char(deployment_mode);
-if ~isfile(cfg0.model_file), build_carsim_mpc_model(); end
+require_carsim_model(cfg0);
 addpath(cfg0.solver_library_dir);
 
 if strcmpi(cfg0.deployment.mode, 'ideal_force')

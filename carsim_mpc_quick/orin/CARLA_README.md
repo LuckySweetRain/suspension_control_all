@@ -29,7 +29,8 @@ CARLA 障碍物、碰撞和地形尚不反馈给这一条 Python 主控动力学
 - CARLA：`E:/Desktop/workspace/CARLA_0.9.11/WindowsNoEditor`，服务端口 `127.0.0.1:2000`。
 - 客户端与服务器均实测为 `0.9.11`；随包 egg 是 `cp37-win-amd64`。
 - 已创建 Conda 环境 `carla0911`（Python 3.7.12）；仅用于这套旧 CARLA 前端。
-  本项目主环境与 Orin 环境不降级。新机器可使用同目录 `environment_carla0911.yml` 创建环境。
+  本项目主环境与 Orin 环境不降级。新机器统一使用同目录 `carla0911.environment.yml` 创建环境，
+  其中固定了与 Pillow 匹配的 libdeflate 版本，避免普通终端缺少 DLL。
 - 原生 VehicleSim 插件描述版本 `2020.0.3`，目标 Unreal Engine 4.24。
 - Orin：`192.168.50.2:55001`，沿用已部署的 `suspension-mpc.service`。
 

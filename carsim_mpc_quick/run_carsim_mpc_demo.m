@@ -5,7 +5,7 @@ addpath(root,fullfile(root,'src'));
 cfg=quick_mpc_config();
 if nargin<1, active_scale=cfg.active_scale; end
 cfg.active_scale=active_scale;
-if ~isfile(cfg.model_file), build_carsim_mpc_model(); end
+require_carsim_model(cfg);
 if ~isfolder(cfg.results_dir), mkdir(cfg.results_dir); end
 addpath(cfg.solver_library_dir);
 

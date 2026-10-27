@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+
 from controller import Controller
 from depth_preview import DepthPreview
 

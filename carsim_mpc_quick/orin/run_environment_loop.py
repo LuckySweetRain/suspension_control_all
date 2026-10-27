@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import math
-import queue
-import socket
-import sys
 import time
-import zlib
 
 import numpy as np
+
 from carla_contact import FrontalContact
-from carla_stack import CARLA_ROOT, ROOT, CarSim, image_at
 from carla_terrain import CarlaTerrain
 from rough_road import PROFILES, generate_world, specification, verify_mesh
+from runtime.carsim import CarSim
+from runtime.paths import ROOT, load_carla
+from runtime.protocol import OrinConnection
+from runtime.sensors import image_at, pack_vision, spawn_camera
 
 
 def timing_summary(trace):
@@ -37,51 +36,8 @@ def timing_summary(trace):
     return summary
 
 
-def pack_vision(depth, semantic, terrain, sim_time):
-    if depth.frame != semantic.frame:
-        raise RuntimeError("Depth/semantic camera frames are not paired")
-    cs, sn = terrain.cs, terrain.sn
-    p = terrain.spawn.location
-    world_to_cs = np.array(
-        [
-            [cs, sn, 0, -cs * p.x - sn * p.y + terrain.origin_cs[0]],
-            [sn, -cs, 0, -sn * p.x + cs * p.y + terrain.origin_cs[1]],
-            [0, 0, 1, -terrain.z_origin],
-            [0, 0, 0, 1],
-        ]
-    )
-    packet = dict(
-        frame=depth.frame,
-        sim_time=sim_time,
-        width=depth.width,
-        height=depth.height,
-        fov=depth.fov,
-        world_to_carsim=world_to_cs.tolist(),
-        camera_to_carsim=(world_to_cs @ np.array(depth.transform.get_matrix())).tolist(),
-        depth=base64.b64encode(zlib.compress(bytes(depth.raw_data), 1)).decode(),
-        semantic=base64.b64encode(zlib.compress(bytes(semantic.raw_data), 1)).decode(),
-    )
-    if terrain.procedural_road:
-        xmin, xmax, ymin, ymax = terrain.road_bounds
-        corners = (
-            np.array(
-                [[xmin, ymin, 0, 1], [xmax, ymin, 0, 1], [xmin, ymax, 0, 1], [xmax, ymax, 0, 1]]
-            )
-            @ world_to_cs.T
-        )
-        packet["road_mask_mode"] = "opendrive_test_road"
-        packet["road_roi_carsim"] = [
-            float(corners[:, 0].min()),
-            float(corners[:, 0].max()),
-            float(corners[:, 1].min()),
-            float(corners[:, 1].max()),
-        ]
-    return packet
-
-
 def run(args):
-    sys.path.insert(0, str(CARLA_ROOT / "PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg"))
-    import carla
+    carla = load_carla()
 
     output = ROOT / "results/carla_environment" / time.strftime("%Y%m%d_%H%M%S")
     output.mkdir(parents=True)
@@ -127,7 +83,6 @@ def run(args):
     settings = world.get_settings()
     settings.synchronous_mode, settings.fixed_delta_seconds = True, 0.05
     actors, solver, connection, viewer, contact = [], None, None, None, None
-    incoming = None
     wall_start = time.perf_counter()
     trace, vision_audit = [], []
     report = dict(
@@ -187,20 +142,18 @@ def run(args):
                 180,
             ),
         ]:
-            bp = world.get_blueprint_library().find("sensor.camera." + kind)
-            for key, value in dict(
-                image_size_x=str(width),
-                image_size_y=str(height),
-                sensor_tick="0.0",
-                fov="90",
-                lens_k="0",
-                lens_kcube="0",
-            ).items():
-                bp.set_attribute(key, value)
-            sensor = world.spawn_actor(bp, transform, attach_to=vehicle)
+            sensor, queues[name] = spawn_camera(
+                world,
+                carla,
+                kind,
+                transform,
+                width,
+                height,
+                attach_to=vehicle,
+                lens_k=0,
+                lens_kcube=0,
+            )
             actors.append(sensor)
-            queues[name] = queue.Queue()
-            sensor.listen(queues[name].put)
         if args.obstacle_at is not None:
             p = terrain.to_world(args.obstacle_at, 0, 0.05)
             barrier = world.spawn_actor(
@@ -234,10 +187,7 @@ def run(args):
         reference.close()
         solver = CarSim(output, terrain=terrain, contact=True)
         contact = FrontalContact(world, carla, terrain, vehicle)
-        connection = socket.create_connection((args.orin_host, 55002), timeout=10)
-        connection.settimeout(30)
-        connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        incoming = connection.makefile("rb")
+        connection = OrinConnection(args.orin_host, 55002)
         digest = hashlib.sha256((ROOT / "results/orin/quick_mpc_data.mat").read_bytes()).hexdigest()
         values = solver.initial
         vision = pack_vision(images["depth"], images["semantic"], terrain, 0)
@@ -260,12 +210,7 @@ def run(args):
                 vision=vision,
             )
             start = time.perf_counter()
-            connection.sendall((json.dumps(request, allow_nan=False) + "\n").encode())
-            line = incoming.readline(32769)
-            rpc_ms = (time.perf_counter() - start) * 1000
-            if len(line) > 32768 or not line.endswith(b"\n"):
-                raise RuntimeError("Orin environment stream disconnected")
-            reply = json.loads(line)
+            reply, rpc_ms = connection.exchange(request)
             if (
                 reply["version"] != 2
                 or reply["seq"] != seq
@@ -371,8 +316,6 @@ def run(args):
             images["rgb"].save_to_disk(str(output / "failure.png"))
         raise
     finally:
-        if incoming is not None:
-            incoming.close()
         if connection is not None:
             connection.close()
         if solver is not None:

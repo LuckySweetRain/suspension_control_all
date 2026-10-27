@@ -1,0 +1,4 @@
+[tool.ruff]
+extend = "../../pyproject.toml"
+# CARLA 0.9.11 requires its cp37 frontend; do not modernize this subtree to 3.10.
+target-version = "py37"

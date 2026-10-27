@@ -12,8 +12,8 @@ import subprocess
 import sys
 import time
 
-from carla_stack import ROOT
 from rough_road import PROFILES
+from runtime.paths import ROOT
 from verify_camera_geometry import verify as verify_camera
 from verify_rough_road import verify as verify_preview
 

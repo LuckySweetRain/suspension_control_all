@@ -7,8 +7,9 @@ import json
 import time
 
 import numpy as np
-from controller import Controller
 from scipy.io import loadmat
+
+from controller import Controller
 
 
 def verify(data, fixture):

@@ -1,6 +1,9 @@
 # Orin 控制器与 CarSim 联合仿真
 
 CARLA 场景、相机和三端基础闭环的启动与测试见 [CARLA_README.md](CARLA_README.md)。
+当前地形闭环、起伏路面和左右对照分别见 [ENVIRONMENT_LOOP.md](ENVIRONMENT_LOOP.md)、
+[ROUGH_ROADS.md](ROUGH_ROADS.md)、[COMPARISON.md](COMPARISON.md)。
+命令入口、Windows 公共 `runtime/` 和 Orin 部署边界见 [代码结构](../../docs/code_structure.md)。
 
 本配置让 Windows 上的 CarSim 作为被控对象，Jetson Orin 执行现有预瞄 QP-MPC。
 控制律、矩阵、预瞄与单位取自 `quick_mpc_config.m` 和 `build_quick_mpc_data.m`。

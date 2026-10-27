@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
-from carla_stack import CARLA_ROOT
+
 from depth_preview import DepthPreview
+from runtime.paths import load_carla
 
 
 def verify(folder):
-    sys.path.insert(0, str(CARLA_ROOT / "PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg"))
-    import carla
+    carla = load_carla()
 
     folder = Path(folder)
     packet = json.loads((folder / "first_vision_packet.json").read_text())

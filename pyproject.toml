@@ -4,7 +4,7 @@ target-version = "py310"
 force-exclude = true
 extend-exclude = [
     "tmp", "tmp_*", ".conda_envs", ".conda_pkgs", ".venv",
-    "results", "datasets", "logs", "projects", "carsim_mpc_quick",
+    "results", "datasets", "logs", "projects",
 ]
 
 [tool.ruff.lint]

@@ -8,7 +8,7 @@ addpath(root, fullfile(root, 'src'));
 cfg0 = quick_mpc_config();
 cfg0.stop_time = 12.0;
 cfg0.deployment.mode = 'ideal_force';
-if ~isfile(cfg0.model_file), build_carsim_mpc_model(); end
+require_carsim_model(cfg0);
 addpath(cfg0.solver_library_dir);
 
 suite_dir = fullfile(cfg0.results_dir, 'robustness_suite');

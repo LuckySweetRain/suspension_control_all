@@ -9,9 +9,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from native_solver import NativeSolver
 from scipy.io import loadmat
 from scipy.linalg import cho_solve
+
+from native_solver import NativeSolver
 
 
 class Controller:

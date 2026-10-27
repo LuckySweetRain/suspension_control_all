@@ -10,10 +10,9 @@ import json
 import math
 import re
 import subprocess
-import sys
 import time
 
-from carla_stack import CARLA_ROOT, ROOT
+from runtime.paths import CARLA_ROOT, ROOT, load_carla
 
 
 def udp_endpoints():
@@ -62,8 +61,7 @@ def straight_routes(world):
 
 
 def main():
-    sys.path.insert(0, str(CARLA_ROOT / "PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg"))
-    import carla
+    carla = load_carla()
 
     output = ROOT / "results/carla_native_probe" / time.strftime("%Y%m%d_%H%M%S")
     output.mkdir(parents=True)

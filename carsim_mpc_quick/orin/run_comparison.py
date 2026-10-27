@@ -8,17 +8,16 @@ import hashlib
 import json
 import math
 import multiprocessing as mp
-import queue
-import socket
-import sys
 import time
 
 import numpy as np
-from carla_stack import CARLA_ROOT, ROOT, image_at
+
 from carla_terrain import CarlaTerrain
 from comparison_worker import worker
 from rough_road import PROFILES, generate_world, specification, verify_mesh
-from run_environment_loop import pack_vision
+from runtime.paths import ROOT, load_carla
+from runtime.protocol import OrinConnection
+from runtime.sensors import image_at, pack_vision, spawn_camera
 
 
 def receive(pipe, timeout=60):
@@ -56,8 +55,7 @@ def save_pair(images, path):
 
 
 def run(args):
-    sys.path.insert(0, str(CARLA_ROOT / "PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg"))
-    import carla
+    carla = load_carla()
 
     output = ROOT / "results/carla_comparison" / time.strftime("%Y%m%d_%H%M%S")
     output.mkdir(parents=True)
@@ -75,7 +73,7 @@ def run(args):
         ),
     )
     actors, pipes, processes, terrains = [], [], [], []
-    incoming, connection, viewer, world, original = None, None, None, None, None
+    connection, viewer, world, original = None, None, None, None
     trace = []
     start = time.perf_counter()
     try:
@@ -119,44 +117,33 @@ def run(args):
                 road_bounds=(0, 160, index * 8, index * 8 + 4),
             )
             terrains.append(terrain)
-            bp = world.get_blueprint_library().find("sensor.camera.rgb")
-            for key, value in dict(
-                image_size_x="640",
-                image_size_y="360",
-                fov="65",
-                sensor_tick="0",
-                enable_postprocess_effects="true",
-            ).items():
-                bp.set_attribute(key, value)
-            camera = world.spawn_actor(
-                bp,
+            camera, queues[index] = spawn_camera(
+                world,
+                carla,
+                "rgb",
                 carla.Transform(
                     carla.Location(x=4, y=spawn.location.y, z=3), carla.Rotation(pitch=-20)
                 ),
+                640,
+                360,
+                fov=65,
+                enable_postprocess_effects="true",
             )
             actors.append(camera)
             cameras.append(camera)
-            queues[index] = queue.Queue()
-            camera.listen(queues[index].put)
         for name, kind in [("depth", "depth"), ("semantic", "semantic_segmentation")]:
-            bp = world.get_blueprint_library().find("sensor.camera." + kind)
-            for key, value in dict(
-                image_size_x="320",
-                image_size_y="180",
-                fov="90",
-                sensor_tick="0",
-                lens_k="0",
-                lens_kcube="0",
-            ).items():
-                bp.set_attribute(key, value)
-            camera = world.spawn_actor(
-                bp,
+            camera, queues[name] = spawn_camera(
+                world,
+                carla,
+                kind,
                 carla.Transform(carla.Location(x=1.8, z=1.3), carla.Rotation(pitch=-35)),
+                320,
+                180,
+                lens_k=0,
+                lens_kcube=0,
                 attach_to=vehicles[0],
             )
             actors.append(camera)
-            queues[name] = queue.Queue()
-            camera.listen(queues[name].put)
         report["tracks"] = [
             dict(
                 role=role,
@@ -215,10 +202,7 @@ def run(args):
 
             viewer = ComparisonView()
             viewer.show([images[0], images[1]], 0, values, [0, 0], [0, 0], warmup=True)
-        connection = socket.create_connection((args.orin_host, 55002), timeout=10)
-        connection.settimeout(30)
-        connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        incoming = connection.makefile("rb")
+        connection = OrinConnection(args.orin_host, 55002)
         digest = hashlib.sha256((ROOT / "results/orin/quick_mpc_data.mat").read_bytes()).hexdigest()
         vision = pack_vision(images["depth"], images["semantic"], terrains[0], 0)
         vision["initial_road_heights_m"] = initial[0]["initial_road_heights_m"]
@@ -233,11 +217,7 @@ def run(args):
                 vision=vision,
                 contact=dict(active=False),
             )
-            connection.sendall((json.dumps(request, allow_nan=False) + "\n").encode())
-            line = incoming.readline(32769)
-            if len(line) > 32768 or not line.endswith(b"\n"):
-                raise RuntimeError("Orin comparison stream disconnected")
-            reply = json.loads(line)
+            reply, _ = connection.exchange(request)
             if (
                 reply["seq"] != seq
                 or reply["version"] != 2
@@ -338,8 +318,6 @@ def run(args):
         report["error"] = str(error)
         raise
     finally:
-        if incoming is not None:
-            incoming.close()
         if connection is not None:
             connection.close()
         for pipe, process in zip(pipes, processes):

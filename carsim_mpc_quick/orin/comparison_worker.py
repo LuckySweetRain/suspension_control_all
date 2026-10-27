@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import json
 import math
-import sys
 import traceback
 from pathlib import Path
 
-from carla_stack import CARLA_ROOT, CarSim
 from carla_terrain import CarlaTerrain
+from runtime.carsim import CarSim
+from runtime.paths import load_carla
 
 
 def worker(connection, folder, spawn_data, bounds, role):
-    sys.path.insert(0, str(CARLA_ROOT / "PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg"))
-    import carla
+    carla = load_carla()
 
     output = Path(folder)
     output.mkdir(parents=True)

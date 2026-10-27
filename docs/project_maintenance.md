@@ -1,5 +1,44 @@
 # 项目整理与验证记录
 
+## 代码结构整理（2026-10-27）
+
+本轮盘点 161 个源码与配置文件，包含主 Python 工程、Chrono、MATLAB/CarSim 与 Orin 前端。
+主研究模型、RL 算法和 Chrono 实现保持原有边界；重构集中在最近增长的 Windows 联仿编排层。
+当前导航见 [代码结构](code_structure.md)。
+
+处理内容：
+
+- 将 CarSim DLL 生命周期、资源路径、相机创建/同帧队列/图像封包和 JSON 行通信分别提取到
+  `carsim_mpc_quick/orin/runtime/`。正式入口不再通过 `carla_stack.py` 或另一个运行入口取得
+  公共基础设施。原启动路径、参数、端口、部署白名单与物理配置保留。
+- 三个主要前端入口合计从 1174 行变为 954 行。提取的 CarSim 类、同帧读取和深度封包函数
+  与原实现 AST 完全相同；通信层统一释放 socket 和文件包装，保留有界 JSON 行协议。
+- 删除旧 `environment_carla0911.yml`，统一到已固定兼容依赖的 `carla0911.environment.yml`。
+- 删除只有换行的 `build_carsim_mpc_model.m`，六个调用点改为 `require_carsim_model`；已有
+  `.slx` 保留，模型丢失时明确报错。没有实现或宣称实现自动模型构建。
+- 根 Ruff 检查纳入 Orin 目录，以子配置保持其 Python 3.7 兼容性；移除提取后未使用的导入，
+  统一局部格式。Orin 控制端仅有导入排序/格式调整，没有依赖 Windows `runtime/`。
+- 新增协议分片、截断、超长帧、非法 JSON 及连接释放检查。保留空包标记、仍有用途的旧诊断
+  入口和独立算法实现，没有因名称相似而合并不同模型。
+
+实际验证：
+
+| 检查 | 结果 |
+|---|---|
+| 根目录 Ruff check / format --check | 通过，覆盖 136 个 Python 文件 |
+| `scripts/check_project.py` | 七组通过；`results/project_checks/20261027_205741_200060/report.json` |
+| 配置校验与 Gymnasium smoke | 通过；配置报告 `results/code_cleanup_20261027/config_validation.json` |
+| 新运行时检查 | Python 3.12 和 CARLA Python 3.7 均通过，其他工作目录调用也通过 |
+| 双进程 MPC/被动 10 s | `results/carla_comparison/20261027_205730`，1000 步，相对重构前两侧状态及控制力最大差均为 0 |
+| 单车地形/深度 10 s | `results/carla_environment/20261027_210132`，1000 步，相对重构前状态及控制力最大差均为 0，预瞄几何校验通过 |
+| 旧 v1 三端诊断 | `results/carla_stack/triple_20261027_210729`，20 步、4 帧，通过；该路线仍使用 CarSim 数据集路面 |
+| Orin 独立部署边界 | 在单独结果目录仅放置部署白名单文件，导入不依赖 CARLA/runtime；80 步 MATLAB 力对照误差约 7.96e-13 N，复位/非有限输入/故障锁存通过 |
+| MATLAB 模型检查 | 已有模型接受、缺失模型正确拒绝、检查函数 checkcode 通过；未重跑完整 Simulink 联仿 |
+
+完整审计、修改前源码备份及对照结果在 `results/code_cleanup_20261027/`。保留了
+`docs/file_inventory.md` 原有未提交修改，并用 SHA256 核对未被本轮覆盖。研究材料、数据集、
+权重、结果以及受保护的 tmp/Conda 目录没有清理。没有执行 pytest，没有据此更新控制性能结论。
+
 日期：2026-09-13。
 
 ## 项目边界

@@ -37,10 +37,12 @@ PyTorch 根据当前安装和硬件自动选择 CUDA 或 CPU；训练支持 `--d
 | `experiments/` | 公共评估、轨迹记录与指标计算 |
 | `scripts/`、`visualization/` | 训练、校验、数据生成、绘图与动画 |
 | `carsim_mpc_quick/` | 独立 MATLAB/Simulink/CarSim 子项目，见其 README |
+| `chrono/` | 独立 Chrono 整车悬架工程与配置，见其 README |
 | `docs/`、`projects/` | 研究记录与答辩材料 |
 | `results/`、`datasets/` | 本地结果、权重与数据，不提交 Git |
 
 各类文件的用途和保留规则见 [文件导航](docs/file_inventory.md)；
+代码分层、当前启动入口和 CARLA/Orin 公共模块见 [代码结构](docs/code_structure.md)。
 答辩源稿与最终成果见 [研究材料导航](projects/README.md)，文档辅助脚本见
 [工具说明](tools/README.md)。历史上已跟踪的少量 CarSim 结果 CSV 仍保留在 Git 中。
 

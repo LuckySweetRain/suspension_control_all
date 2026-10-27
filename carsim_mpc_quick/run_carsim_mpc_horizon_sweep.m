@@ -7,7 +7,7 @@ root = fileparts(mfilename('fullpath'));
 addpath(root,fullfile(root,'src'));
 cfg0 = quick_mpc_config();
 if nargin < 1 || isempty(active_scale), active_scale = cfg0.active_scale; end
-if ~isfile(cfg0.model_file), build_carsim_mpc_model(); end
+require_carsim_model(cfg0);
 addpath(cfg0.solver_library_dir);
 
 out_dir = fullfile(cfg0.results_dir,'horizon_sweep');

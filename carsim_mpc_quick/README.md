@@ -67,13 +67,17 @@ CarSim 内部参数文件的 `tstep` 与 simfile 中的 `EXT_MODEL_STEP` 必须�
 
 ## 运行
 
+仓库已包含 `carsim_half_car_qp_mpc.slx`。运行前用 `require_carsim_model` 检查模型是否存在；
+项目没有可用的自动模型构建器。原空构建文件已移除，缺少模型时需先从仓库恢复 `.slx`，
+不会以空操作冒充构建成功。
+
 ```matlab
 cd('E:\Desktop\workspace\suspension_control_all\carsim_mpc_quick');
 addpath('src', 'tests');
 validate_quick_mpc_offline();
 tuning = tune_quick_mpc_offline(); % 权重筛选与 N=10/15/20/30 扫描
 tuning_carsim = tune_quick_mpc_carsim(); % CarSim 在环权重与力极性筛选
-build_carsim_mpc_model();       % 首次或接口变化后执行
+require_carsim_model(quick_mpc_config()); % 检查仓库中已有的 .slx 模型
 report = run_carsim_mpc_demo(); % 默认 deployment scale = 1.00
 horizon = run_carsim_mpc_horizon_sweep(); % CarSim 中复核 N=10/15/20/30
 
