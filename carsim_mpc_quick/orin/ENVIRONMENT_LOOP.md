@@ -50,6 +50,9 @@ Orin 新服务为 `suspension-environment.service`，监听 55002；旧 55001 �
 # 不显示窗口，用于批量复核；仍然使用 CARLA 真实相机图像。
 ./carsim_mpc_quick/orin/start_environment_loop.ps1 -NoVisualize
 
+# 只验证 Python、Pillow DLL 和 Tk 渲染，不连接 Orin、不改变 CARLA 世界。
+./carsim_mpc_quick/orin/start_environment_loop.ps1 -CheckOnly
+
 # 无障碍物的短坡道验证；显示真实画面、控制力和加速度
 conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/run_environment_loop.py --seconds 0.5 --spawn 53 --visualize
 
@@ -91,6 +94,31 @@ CarSim 积分及地形查询；`cycle_ms` 还包含接触查询和对应步的�
 可视化 10 s 工况的 Orin 计算 p50 约 7.95 ms、p95 约 44.75 ms；完整控制周期 p50 约
 21.32 ms、p95 约 55.85 ms。优化改善了重复预瞄与中位耗时，仍未解决图像更新峰值，也未达到
 100 Hz 墙钟实时。图像掩码仍为仿真真值，完整碰撞仍按下节列为未完成项。
+
+### 可视化启动时 Pillow DLL 报错
+
+若 `PIL._imaging` 报“DLL load failed：找不到指定的模块”，已确认的一种原因是
+`libtiff 4.4.0` 依赖 `libdeflate.dll`，但环境安装的 `libdeflate 1.25` 只提供
+`deflate.dll`。Codex 附带的额外 DLL 路径可能掩盖此问题，必须在普通 PowerShell 环境复查。
+2026-10-27 已将本机 carla0911 的 libdeflate 固定为 1.14，并验证无 Codex 路径时 Pillow、
+NumPy 和 Tk 真实图像渲染通过。没有通过复制其他应用的 DLL 或全局修改 PATH 解决。
+本机 `conda-meta/pinned` 同时固定 `libdeflate ==1.14`，避免后续常规更新重新引入不匹配版本。
+
+新建独立环境的版本清单为 `carla0911.environment.yml`：
+
+```powershell
+conda env create -f carsim_mpc_quick/orin/carla0911.environment.yml
+# 已有环境若再次遇到上述同一依赖问题：
+conda install -n carla0911 -c conda-forge libdeflate=1.14
+./carsim_mpc_quick/orin/start_environment_loop.ps1 -CheckOnly
+```
+
+本机本次使用已缓存的包离线修复，避免网络源连接失败影响修复：
+`conda install -n carla0911 --offline --yes E:/anaconda3/pkgs/libdeflate-1.14-hcfcfb64_0.tar.bz2`。
+启动器现在先检查导入和 Tk 渲染，失败时尚未创建 CARLA 车辆或连接控制流。
+修复后在移除 Codex/libheif/poppler/jxrlib 路径的进程中，通过同一启动器完成 10 s 可视化闭环：
+`results/carla_environment/20261027_190919/report.json`，1000 控制步、200 次图像更新，
+`passed=true`。依赖预检的 `-CheckOnly` 和 PowerShell 语法解析也通过。
 
 原生接口探测可重复运行（需当前世界没有其他车辆）：
 

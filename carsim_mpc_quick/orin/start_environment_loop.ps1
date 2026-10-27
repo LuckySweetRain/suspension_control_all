@@ -2,13 +2,26 @@ param(
     [ValidateRange(0.05, 30)][double]$Seconds = 10,
     [int]$SpawnIndex = 159,
     [string]$OrinHost = "192.168.50.2",
-    [switch]$NoVisualize
+    [switch]$NoVisualize,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $carlaExe = "E:/Desktop/workspace/CARLA_0.9.11/WindowsNoEditor/CarlaUE4.exe"
 $condaCommand = Get-Command conda -ErrorAction Stop
+
+# Validate native DLLs before creating CARLA actors or opening the Orin stream.
+# In particular, legacy Pillow/libtiff needs libdeflate.dll (libdeflate 1.14).
+$dependencyCheck = "import numpy; print('NumPy import OK')"
+if (-not $NoVisualize) {
+    $dependencyCheck += "; from PIL import Image,ImageTk; import tkinter; root=tkinter.Tk(); root.withdraw(); image=ImageTk.PhotoImage(Image.new('RGB',(8,8))); root.update(); root.destroy(); print('Pillow and Tk rendering OK')"
+}
+& $condaCommand run --no-capture-output -n carla0911 python -c $dependencyCheck
+if ($LASTEXITCODE -ne 0) {
+    throw "carla0911 dependency check failed. See orin/ENVIRONMENT_LOOP.md for the pinned environment and Pillow DLL repair."
+}
+if ($CheckOnly) { return }
 
 function Test-TcpEndpoint([string]$Address, [int]$Port) {
     $client = New-Object System.Net.Sockets.TcpClient

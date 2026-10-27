@@ -1,0 +1,13 @@
+# Windows CARLA 0.9.11 Python ABI. Keep separate from the main research environment.
+name: carla0911
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7.12
+  - numpy=1.21.6
+  - pillow=9.2.0
+  - libtiff=4.4.0
+  # libtiff 4.4.0 imports libdeflate.dll; newer packages may ship deflate.dll instead.
+  - libdeflate=1.14
+  - setuptools<70
