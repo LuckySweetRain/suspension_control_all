@@ -64,7 +64,9 @@ class LiveView:
         self.closed = True
         self.root.destroy()
 
-    def show(self, image, sim_time=0, values=None, diagnostics=None, rtt=0, steps=0):
+    def show(
+        self, image, sim_time=0, values=None, diagnostics=None, rtt=0, steps=0, road_preview=None
+    ):
         if self.closed:
             raise ViewerClosed("用户关闭可视化窗口，已停止本次仿真")
         rgb = Image.frombytes(
@@ -76,12 +78,24 @@ class LiveView:
         if values is not None and diagnostics is not None:
             front, rear = diagnostics[:2]
             acceleration = values[40] * 9.80665
-            self.metrics.set(
+            text = (
                 f"仿真时间 {sim_time:6.2f} s     车速 {values[76]:6.2f} km/h     控制次数 {steps}\n"
                 f"前轴主动力 {front:8.1f} N     后轴主动力 {rear:8.1f} N     Orin 请求 {rtt:6.2f} ms\n"
                 f"车身垂向加速度 {acceleration:7.3f} m/s²     俯仰角 {values[41]:7.3f} deg"
             )
-            self.history.append((sim_time, front, rear, acceleration))
+            if road_preview is not None:
+                text += f"\n前/后轴预瞄路高 {road_preview[0] * 1000:6.1f} / {road_preview[2] * 1000:6.1f} mm（相对初始平面）"
+            self.metrics.set(text)
+            self.history.append(
+                (
+                    sim_time,
+                    front,
+                    rear,
+                    acceleration,
+                    road_preview[0] if road_preview is not None else None,
+                    road_preview[2] if road_preview is not None else None,
+                )
+            )
             self.draw_plot()
         self.root.update_idletasks()
         self.root.update()
@@ -91,23 +105,49 @@ class LiveView:
     def draw_plot(self):
         self.plot.delete("all")
         items = list(self.history)
-        for left, right, title in [
+        has_road = any(item[4] is not None for item in items)
+        road_scale = max(
+            0.005,
+            max(
+                (abs(item[index]) for item in items for index in (4, 5) if item[index] is not None),
+                default=0,
+            ),
+        )
+        panels = [
             (12, 440, "主动轴力 N  · 前轴青色 / 后轴橙色"),
             (465, 888, "车身垂向加速度 m/s²"),
-        ]:
+        ]
+        if has_road:
+            panels = [
+                (12, 300, "主动轴力 N · 青前/橙后"),
+                (320, 595, "车身垂向加速度 m/s²"),
+                (615, 888, f"预瞄路高 ±{road_scale * 1000:.0f} mm · 青前/橙后"),
+            ]
+        for left, right, title in panels:
             self.plot.create_text(left, 12, text=title, anchor="w", fill="#cbd5e1")
             self.plot.create_line(left, 85, right, 85, fill="#475569")
         if len(items) < 2:
             return
         span = max(items[-1][0] - items[0][0], 0.05)
         acc_scale = max(1.0, max(abs(item[3]) for item in items))
-        for index, color, left, right, scale in [
+        series = [
             (1, "#22d3ee", 12, 440, 2100),
             (2, "#fb923c", 12, 440, 2100),
             (3, "#a3e635", 465, 888, acc_scale),
-        ]:
+        ]
+        if has_road:
+            series = [
+                (1, "#22d3ee", 12, 300, 2100),
+                (2, "#fb923c", 12, 300, 2100),
+                (3, "#a3e635", 320, 595, acc_scale),
+                (4, "#22d3ee", 615, 888, road_scale),
+                (5, "#fb923c", 615, 888, road_scale),
+            ]
+        for index, color, left, right, scale in series:
             points = []
             for item in items:
+                if item[index] is None:
+                    continue
                 points.extend(
                     (
                         left + (right - left) * (item[0] - items[0][0]) / span,

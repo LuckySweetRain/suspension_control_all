@@ -61,6 +61,7 @@ def serve():
                                 diagnostics=diag,
                                 fallback=fallback,
                                 preview_source="depth_image",
+                                road_mask_mode=vision.mask_mode,
                                 camera_frame=vision.frame,
                                 valid_road_pixels=vision.valid_points,
                                 image_preview_w=preview[0].tolist(),

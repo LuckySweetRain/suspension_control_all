@@ -48,6 +48,7 @@ class FrontalContact:
                         "Vehicles",
                         "None",
                     )
+                    and not (self.terrain.procedural_road and str(h.label).upper() == "NONE")
                 ]
                 if hits:
                     if str(hits[0].label).upper() == "NONE":

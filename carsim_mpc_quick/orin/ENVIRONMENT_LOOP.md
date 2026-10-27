@@ -1,5 +1,9 @@
 # CARLA 环境反馈闭环：当前实现与未完成项
 
+波浪路、减速带及凹陷已加入独立入口，见 [ROUGH_ROADS.md](ROUGH_ROADS.md)。
+启动示例：`./carsim_mpc_quick/orin/start_environment_loop.ps1 -RoadProfile combined`。
+这些纵向高程可通过运行时 OpenDRIVE 生成，无需先构建任意网格地图的 UE 工程。
+
 本入口取代“只把 CarSim 姿态显示到 CARLA”的演示路线，用真实 CARLA 场景地形和相机数据驱动
 CarSim–Orin。**完整的原生多方向碰撞冲量耦合尚未完成**，不能把本原型等同于通用碰撞仿真。
 旧 `carla_stack.py --mode triple` 保留用于对照，它仍使用原 CarSim 路面。

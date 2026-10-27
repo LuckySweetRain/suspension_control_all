@@ -2,6 +2,7 @@ param(
     [ValidateRange(0.05, 30)][double]$Seconds = 10,
     [int]$SpawnIndex = 159,
     [string]$OrinHost = "192.168.50.2",
+    [ValidateSet("town", "wave", "bump", "pothole", "combined")][string]$RoadProfile = "town",
     [switch]$NoVisualize,
     [switch]$CheckOnly
 )
@@ -56,7 +57,7 @@ if (-not (Test-TcpEndpoint "127.0.0.1" 2000)) {
 $runArguments = @(
     "run", "--no-capture-output", "-n", "carla0911", "python",
     "carsim_mpc_quick/orin/run_environment_loop.py", "--seconds", $Seconds.ToString([cultureinfo]::InvariantCulture),
-    "--spawn", $SpawnIndex, "--orin-host", $OrinHost
+    "--spawn", $SpawnIndex, "--orin-host", $OrinHost, "--road-profile", $RoadProfile
 )
 if (-not $NoVisualize) { $runArguments += "--visualize" }
 Push-Location -LiteralPath $projectRoot

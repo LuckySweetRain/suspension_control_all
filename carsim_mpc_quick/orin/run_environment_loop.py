@@ -17,6 +17,7 @@ import numpy as np
 from carla_contact import FrontalContact
 from carla_stack import CARLA_ROOT, ROOT, CarSim, image_at
 from carla_terrain import CarlaTerrain
+from rough_road import PROFILES, generate_world, specification, verify_mesh
 
 
 def timing_summary(trace):
@@ -49,7 +50,7 @@ def pack_vision(depth, semantic, terrain, sim_time):
             [0, 0, 0, 1],
         ]
     )
-    return dict(
+    packet = dict(
         frame=depth.frame,
         sim_time=sim_time,
         width=depth.width,
@@ -60,6 +61,18 @@ def pack_vision(depth, semantic, terrain, sim_time):
         depth=base64.b64encode(zlib.compress(bytes(depth.raw_data), 1)).decode(),
         semantic=base64.b64encode(zlib.compress(bytes(semantic.raw_data), 1)).decode(),
     )
+    if terrain.procedural_road:
+        corners = (
+            np.array([[0, 0, 0, 1], [160, 0, 0, 1], [0, 4, 0, 1], [160, 4, 0, 1]]) @ world_to_cs.T
+        )
+        packet["road_mask_mode"] = "opendrive_test_road"
+        packet["road_roi_carsim"] = [
+            float(corners[:, 0].min()),
+            float(corners[:, 0].max()),
+            float(corners[:, 1].min()),
+            float(corners[:, 1].max()),
+        ]
+    return packet
 
 
 def run(args):
@@ -69,17 +82,42 @@ def run(args):
     output = ROOT / "results/carla_environment" / time.strftime("%Y%m%d_%H%M%S")
     output.mkdir(parents=True)
     client = carla.Client("127.0.0.1", 2000)
-    client.set_timeout(30)
+    client.set_timeout(60)
     world = client.get_world()
     if list(world.get_actors().filter("vehicle.*")):
         raise RuntimeError("Another vehicle simulation is running")
-    if args.spawn is None:
+    procedural = args.road_profile != "town"
+    mesh_check = None
+    if procedural:
+        try:
+            world = generate_world(client, carla, args.road_profile, output)
+            mesh_check = verify_mesh(world, carla, args.road_profile, output)
+        except Exception as error:
+            (output / "report.json").write_text(
+                json.dumps(
+                    dict(
+                        passed=False,
+                        stage="procedural_world_setup",
+                        road_profile=args.road_profile,
+                        error=str(error),
+                    ),
+                    indent=2,
+                )
+            )
+            print("Artifacts:", output, flush=True)
+            raise
+        (output / "road_specification.json").write_text(
+            json.dumps(specification(args.road_profile), indent=2)
+        )
+    elif world.get_map().name.split("/")[-1] == "OpenDriveMap":
+        world = client.load_world("Town03")
+    if args.spawn is None and not procedural:
         if world.get_map().name.split("/")[-1] != "Town03":
             raise RuntimeError(
                 "Default validation route requires Town03; specify --spawn for another map"
             )
         args.spawn = 159
-    if args.spawn >= len(world.get_map().get_spawn_points()):
+    if not procedural and args.spawn >= len(world.get_map().get_spawn_points()):
         raise ValueError("Spawn index is outside this map")
     original = world.get_settings()
     settings = world.get_settings()
@@ -94,18 +132,28 @@ def run(args):
         preview_source="Orin depth image reconstruction",
         semantic_mask="CARLA ground truth, not a trained RGB model",
         contact_model="frontal compliant geometry contact, not PhysX",
-        spawn_index=args.spawn,
+        spawn_index=None if procedural else args.spawn,
         requested_sim_seconds=args.seconds,
         execution_mode="offline_synchronous",
         integration_dt_s=0.001,
         control_dt_s=0.01,
         camera_dt_s=0.05,
         map=world.get_map().name,
+        road_profile=args.road_profile,
+        mesh_check=mesh_check,
     )
+    if procedural:
+        report["semantic_mask"] = "depth within known test-road XY footprint; no road semantic tag"
+        report["spawn_station_m"] = 10.0
+    captures = []
     try:
         world.apply_settings(settings)
-        spawn = world.get_map().get_spawn_points()[args.spawn]
-        terrain = CarlaTerrain(world, carla, spawn)
+        if procedural:
+            spawn = world.get_map().get_waypoint_xodr(1, -1, 10).transform
+            spawn.location.z += 0.3
+        else:
+            spawn = world.get_map().get_spawn_points()[args.spawn]
+        terrain = CarlaTerrain(world, carla, spawn, procedural_road=procedural)
         vehicle = world.spawn_actor(
             world.get_blueprint_library().find("vehicle.tesla.model3"), spawn
         )
@@ -164,8 +212,13 @@ def run(args):
         if args.visualize:
             from live_view import LiveView
 
-            viewer = LiveView("CARLA 地形 · Orin 深度图预瞄（语义真值掩码）· 碰撞为正向接触原型")
+            mask_description = "已知道路范围的深度筛选" if procedural else "语义真值掩码"
+            viewer = LiveView(
+                "CARLA 地形 · Orin 深度预瞄（" + mask_description + "）· 离线同步仿真"
+            )
             viewer.root.title("CARLA 环境反馈闭环 — 地形与深度预瞄")
+            if procedural:
+                viewer.root.title("CARLA 起伏路面闭环 — " + args.road_profile)
             viewer.show(images["rgb"])
         # Calibrate the CarSim CG/path-origin offset before terrain initialization.
         # Changing that offset afterwards would move a slope beneath settled tyres.
@@ -256,6 +309,19 @@ def run(args):
                 frame = world.tick()
                 images = {k: image_at(q, frame) for k, q in queues.items()}
                 vision = pack_vision(images["depth"], images["semantic"], terrain, solver.t)
+                if procedural:
+                    for kind, station in [("wave", 31.25), ("bump", 62), ("pothole", 87)]:
+                        if args.road_profile not in (kind, "combined") or kind in captures:
+                            continue
+                        if position.x >= station - 4:
+                            sample_folder = output / ("approach_" + kind)
+                            sample_folder.mkdir()
+                            sample = dict(vision, initial_road_heights_m=initial_road)
+                            (sample_folder / "first_vision_packet.json").write_text(
+                                json.dumps(sample)
+                            )
+                            images["rgb"].save_to_disk(str(sample_folder / "first.png"))
+                            captures.append(kind)
                 vision_audit.append(
                     dict(
                         frame=frame,
@@ -265,7 +331,13 @@ def run(args):
                 )
                 if viewer is not None:
                     viewer.show(
-                        images["rgb"], solver.t, values, reply["diagnostics"], rpc_ms, seq + 1
+                        images["rgb"],
+                        solver.t,
+                        values,
+                        reply["diagnostics"],
+                        rpc_ms,
+                        seq + 1,
+                        road_preview=reply["image_preview_w"][:4] if procedural else None,
                     )
             trace[-1]["cycle_ms"] = (time.perf_counter() - cycle_start) * 1000
         images["rgb"].save_to_disk(str(output / "last.png"))
@@ -280,6 +352,7 @@ def run(args):
             contact_events=contact.events,
             max_contact_force_N=contact.max_force,
             final_speed_kph=values[76],
+            feature_captures=captures,
             max_normalized_qp_violation=max(t["reply"]["diagnostics"][3] for t in trace),
             negative_saturation_fraction=np.mean(
                 np.array([t["reply"]["diagnostics"][:2] for t in trace]) <= -1999, axis=0
@@ -316,10 +389,12 @@ def run(args):
         (output / "vision_frames.json").write_text(json.dumps(vision_audit))
         (output / "report.json").write_text(json.dumps(report, indent=2))
         print(json.dumps(report, indent=2))
-        print("Artifacts:", output)
+        print("Artifacts:", output, flush=True)
     if viewer is not None:
         viewer.finish("离线同步闭环完成；碰撞为正向柔顺接触原型，尚未保证 10 ms 实时")
-        viewer.wait()
+    # Release solver, sensor and CARLA client references before holding the
+    # completed GUI open. Old clients must not retain episodes across map loads.
+    return viewer
 
 
 if __name__ == "__main__":
@@ -331,6 +406,7 @@ if __name__ == "__main__":
     parser.add_argument("--orin-host", default="192.168.50.2")
     parser.add_argument("--obstacle-at", type=float)
     parser.add_argument("--visualize", action="store_true")
+    parser.add_argument("--road-profile", choices=("town",) + PROFILES, default="town")
     arguments = parser.parse_args()
     if not math.isfinite(arguments.seconds) or not 0.05 <= arguments.seconds <= 30:
         parser.error("seconds must be between 0.05 and 30")
@@ -340,4 +416,15 @@ if __name__ == "__main__":
         not math.isfinite(arguments.obstacle_at) or arguments.obstacle_at <= 3
     ):
         parser.error("obstacle-at must be finite and greater than 3 m")
-    run(arguments)
+    if arguments.road_profile != "town" and arguments.obstacle_at is not None:
+        parser.error(
+            "Procedural test roads use an isolated road-only world; obstacle-at requires town mode"
+        )
+    if arguments.road_profile != "town" and arguments.seconds > 13:
+        parser.error("Generated road runs are limited to 13 s at the current 35 km/h setting")
+    live = run(arguments)
+    if live is not None:
+        import gc
+
+        gc.collect()
+        live.wait()

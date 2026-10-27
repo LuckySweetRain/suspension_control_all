@@ -1,7 +1,8 @@
 """Orin-side geometric preview from timestamped CARLA depth/semantic camera images.
 
-The semantic road mask is simulator ground truth, not a trained RGB segmentation model.
-No CarSim road table or CARLA ray-cast heights enter this perception module.
+City roads use simulator semantic truth. Isolated procedural test roads use a known XY
+footprint and unlabelled-mesh depth. Neither mode uses a trained RGB segmenter. Only
+initial contact elevations calibrate the state frame; future heights come from images.
 """
 
 from __future__ import annotations
@@ -23,8 +24,15 @@ class DepthPreview:
         self.previous_reference = None
         self.profile_cache = None
         self.coverage_fractions = [0.0, 0.0]
+        self.mask_mode = None
 
     def observe(self, packet):
+        mode = packet.get("road_mask_mode", "semantic_truth")
+        if mode not in ("semantic_truth", "opendrive_test_road"):
+            raise ValueError("Unsupported road mask mode")
+        if self.mask_mode is not None and mode != self.mask_mode:
+            raise ValueError("Road mask mode changed within the run")
+        self.mask_mode = mode
         if self.initial_road is None:
             calibration = np.asarray(packet.get("initial_road_heights_m"), dtype=float)
             if calibration.shape != (2,) or not np.all(np.isfinite(calibration)):
@@ -49,7 +57,8 @@ class DepthPreview:
         )
         vv, uu = np.indices(d.shape)
         focal = width / (2 * np.tan(np.deg2rad(float(packet["fov"])) / 2))
-        mask = np.isin(semantic[:, :, 2], [6, 7]) & (d > 0.2) & (d < 20)
+        labels = [0, 6, 7] if mode == "opendrive_test_road" else [6, 7]
+        mask = np.isin(semantic[:, :, 2], labels) & (d > 0.2) & (d < 20)
         mask &= (vv % 2 == 0) & (uu % 2 == 0)
         local = np.column_stack(
             (
@@ -63,6 +72,24 @@ class DepthPreview:
         if transform.shape != (4, 4) or not np.all(np.isfinite(transform)):
             raise ValueError("Invalid camera calibration")
         cloud = (local @ transform.T)[:, :3]
+        if mode == "opendrive_test_road":
+            # Runtime procedural meshes have no road semantic tag in 0.9.11.
+            # This isolated world contains only the road and ego vehicle; use
+            # its known XY footprint, never its authored elevation, to mask depth.
+            roi = np.asarray(packet.get("road_roi_carsim"), dtype=float)
+            if (
+                roi.shape != (4,)
+                or not np.all(np.isfinite(roi))
+                or roi[0] >= roi[1]
+                or roi[2] >= roi[3]
+            ):
+                raise ValueError("Invalid procedural road footprint")
+            cloud = cloud[
+                (cloud[:, 0] >= roi[0])
+                & (cloud[:, 0] <= roi[1])
+                & (cloud[:, 1] >= roi[2])
+                & (cloud[:, 1] <= roi[3])
+            ]
         if len(cloud) < 50 or not np.all(np.isfinite(cloud)):
             raise ValueError("Insufficient valid image road points")
         if self.reference_plane is None:

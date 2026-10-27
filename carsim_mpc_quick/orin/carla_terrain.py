@@ -7,8 +7,9 @@ import math
 
 
 class CarlaTerrain:
-    def __init__(self, world, carla, spawn):
+    def __init__(self, world, carla, spawn, procedural_road=False):
         self.world, self.carla, self.spawn = world, carla, spawn
+        self.procedural_road = procedural_road
         self.angle = math.radians(spawn.rotation.yaw)
         self.cs, self.sn = math.cos(self.angle), math.sin(self.angle)
         self.cache = {}
@@ -32,6 +33,8 @@ class CarlaTerrain:
         )
 
     def height_world(self, x, y):
+        if self.procedural_road and not (0 <= x <= 160 and 0 <= y <= 4):
+            raise RuntimeError("Terrain query outside the generated test-road footprint")
         hits = self.world.cast_ray(
             self.carla.Location(x=x, y=y, z=self.spawn.location.z + 8),
             self.carla.Location(x=x, y=y, z=self.spawn.location.z - 8),
@@ -42,6 +45,7 @@ class CarlaTerrain:
             h.location.z
             for h in hits
             if str(h.label) in ("Roads", "RoadLines", "Sidewalks", "Ground", "Terrain")
+            or (self.procedural_road and str(h.label).upper() == "NONE")
         ]
         if not ground:
             raise RuntimeError(f"CARLA terrain has no ground hit at {x:.3f},{y:.3f}")
