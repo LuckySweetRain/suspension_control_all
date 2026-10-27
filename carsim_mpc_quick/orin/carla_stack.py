@@ -29,8 +29,26 @@ DATABASE = Path("E:/Desktop/workspace/CarSim_database/carsim_active_suspension")
 class CarSim:
     """One DLL owner; keep original 8 imports / 77 exports and append 4 pose exports."""
 
-    def __init__(self, output):
+    def __init__(self, output, terrain=None, contact=False):
         text = (ROOT / "results/orin/runtime_run.par").read_text(encoding="utf-8")
+        if terrain is not None:
+            road = re.search(
+                r"(?ms)^ENTER_PARSFILE Roads\\3D_Road[^\n]*\n.*?^EXIT_PARSFILE Roads\\3D_Road[^\n]*\.par[ \t]*$",
+                text,
+            )
+            if road is None:
+                raise RuntimeError("Expected one expanded CarSim road block")
+            path = re.search(
+                r"(?ms)^ENTER_PARSFILE Roads\\BuilderSegment[^\n]*\n.*?^EXIT_PARSFILE Roads\\BuilderSegment[^\n]*",
+                road.group(),
+            )
+            if path is None:
+                raise RuntimeError("Missing independent driver path")
+            text = text[: road.start()] + path.group() + text[road.end() :]
+        self.n_import = 9 if contact else 8
+        if contact:
+            text = re.sub(r"(?m)^PORTS_IMP\s+1,8\s*$", "PORTS_IMP 1,9", text)
+            text = re.sub(r"(?m)^END\s*$", "IMPORT IMP_FX_AERO Add 0.0\nEND", text)
         text = re.sub(r"(?m)^PORTS_EXP\s+1,77\s*$", "PORTS_EXP 1,81", text)
         text = re.sub(
             r"(?m)^END\s*$", "EXPORT Xcg_TM\nEXPORT Ycg_TM\nEXPORT Yaw\nEXPORT Roll\nEND", text
@@ -44,12 +62,15 @@ class CarSim:
             f"SIMFILE\nINPUT {par}\nECHO {prefix}_echo.par\nLOGFILE {prefix}_log.txt\n"
             f"FINAL {prefix}_end.par\nERDFILE {prefix}.vs\nPROGDIR E:/Carsim2020.0_Prog/\n"
             f"DATADIR {DATABASE}/\nVEHICLE_CODE i_i\nEXT_MODEL_STEP 0.001\n"
-            f"PORTS_IMP 1,8\nPORTS_EXP 1,81\nDLLFILE {dll}\nEND\n",
+            f"PORTS_IMP 1,{self.n_import}\nPORTS_EXP 1,81\nDLLFILE {dll}\nEND\n",
             encoding="utf-8",
         )
         self.dll = ct.CDLL(dll)
         self.dll.vs_set_opt_error_dialog(ct.c_int(0))
         self.dll.vs_get_error_message.restype = ct.c_char_p
+        self.terrain = terrain
+        if terrain is not None:
+            terrain.install(self.dll)
         self.dll.vs_read_configuration.argtypes = [
             ct.c_char_p,
             ct.POINTER(ct.c_int32),
@@ -82,20 +103,28 @@ class CarSim:
             os.chdir(old)
         self.t = start.value
         self.check()
-        if (ni.value, ne.value) != (8, 81) or abs(dt.value - 0.001) > 1e-10:
+        if (ni.value, ne.value) != (self.n_import, 81) or abs(dt.value - 0.001) > 1e-10:
             self.close()
             raise RuntimeError(f"Unexpected CarSim I/O or step: {(ni.value, ne.value, dt.value)}")
         self.values = (ct.c_double * 81)()
         self.dll.vs_copy_export_vars(self.values)
         self.t = start.value
         self.initial = list(self.values)
+        if terrain is not None:
+            if not terrain.origin_calibrated:
+                terrain.origin_cs = (self.initial[77], self.initial[78])
+                terrain.cache.clear()
+            terrain.install(self.dll)
 
     def check(self):
+        if self.terrain is not None:
+            self.terrain.check()
         if self.dll.vs_error_occurred():
             raise RuntimeError(self.dll.vs_get_error_message().decode(errors="replace"))
 
-    def step(self, forces):
-        inputs = (ct.c_double * 8)(*forces)
+    def step(self, forces, contact_force=0):
+        values = list(forces) + ([contact_force] if self.n_import == 9 else [])
+        inputs = (ct.c_double * self.n_import)(*values)
         for _ in range(10):
             self.t += 0.001
             status = self.dll.vs_integrate_io(self.t, inputs, self.values)

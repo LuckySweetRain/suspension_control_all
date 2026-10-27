@@ -132,15 +132,35 @@ class Controller:
         violation = max(0.0, float(np.max(ax - hi)), float(np.max(lo - ax)))
         return force, [_k, violation, float(converged), float(np.max(margin))]
 
-    def step(self, exports):
+    def step(self, exports, external_preview=None, contact_active=False):
         y = np.asarray(exports, dtype=float)
         if y.shape == (77,):
             y = y[38:77]
         if y.shape != (39,) or not np.all(np.isfinite(y)):
             raise ValueError("Expected 39 or 77 finite CarSim exports")
         x = self.state(y)
-        w, bound, meta = self.preview(y)
-        force, info = self.solve(x, w, bound)
+        if external_preview is None:
+            w, bound, meta = self.preview(y)
+        else:
+            w, bound, meta = external_preview[:3]
+            if len(external_preview) == 4:
+                correction = np.asarray(external_preview[3], dtype=float)
+                if correction.shape != (8,) or not np.all(np.isfinite(correction)):
+                    raise ValueError("Invalid road-frame state correction")
+                x = x - correction
+        if (
+            np.shape(w) != (4 * self.n,)
+            or np.shape(bound) != (4 * self.n,)
+            or not np.all(np.isfinite(w))
+            or not np.all(np.isfinite(bound))
+        ):
+            raise ValueError("Invalid external image preview")
+        if contact_active:
+            # Passive suspension during contact response; this is an explicit
+            # collision supervisor, distinct from a QP failure/fallback latch.
+            force, info = np.zeros(2), [0, 0.0, 0.0, 0.0]
+        else:
+            force, info = self.solve(x, w, bound)
         # Match the MATLAB runtime: an iteration-limited feasible solution is
         # usable after force/rate projection. Keep convergence visible in diag[4].
         # Reject a materially infeasible solution (normalized bound error >0.5%).

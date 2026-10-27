@@ -1,5 +1,8 @@
 # CARLA–CarSim–Orin 基础三端闭环
 
+**CARLA 地形与板端深度图预瞄的新反馈入口见 [ENVIRONMENT_LOOP.md](ENVIRONMENT_LOOP.md)。**
+本文以下内容记录之前的姿态/相机演示路线，保留用于对照；完整原生碰撞耦合仍未完成。
+
 2026-10-27 已在本机实测 CARLA 0.9.11 场景、原生 CarSim 插件和 Python 主控三端闭环。
 本入口不需要 MATLAB。CarSim 2020 Browser/许可管理器需要保持运行。
 

@@ -55,6 +55,8 @@ def deploy(host="192.168.1.41"):
                 "requirements.txt",
                 "native_solver.py",
                 "qp_native.cpp",
+                "depth_preview.py",
+                "environment_server.py",
             ):
                 sftp.put(str(source / filename), f"{remote}/{filename}")
             sftp.put(str(mat), f"{remote}/quick_mpc_data.mat")
@@ -80,6 +82,21 @@ WantedBy=default.target
                 "/home/nvidia/.config/systemd/user/suspension-mpc.service", "w"
             ) as stream:
                 stream.write(unit)
+            environment_unit = unit.replace(
+                "Active suspension CarSim preview MPC on Orin",
+                "CARLA terrain and depth-image suspension controller",
+            )
+            environment_unit = environment_unit.replace(
+                f"{remote}/server.py --host 0.0.0.0", f"{remote}/environment_server.py"
+            )
+            environment_unit = environment_unit.replace(
+                "Restart=on-failure",
+                f"StandardOutput=append:{remote}/environment.log\nStandardError=append:{remote}/environment.log\nRestart=on-failure",
+            )
+            with sftp.open(
+                "/home/nvidia/.config/systemd/user/suspension-environment.service", "w"
+            ) as stream:
+                stream.write(environment_unit)
         run(
             f"cd {remote} && g++ -std=c++17 -O3 -Wall -Wextra -Werror -fPIC -shared qp_native.cpp -o qp_native.so"
         )
@@ -88,6 +105,9 @@ WantedBy=default.target
             "systemctl --user daemon-reload && systemctl --user enable --now suspension-mpc.service"
         )
         run("systemctl --user restart suspension-mpc.service")
+        run(
+            "systemctl --user enable --now suspension-environment.service && systemctl --user restart suspension-environment.service"
+        )
         run("systemctl --user --no-pager status suspension-mpc.service")
         print(f"Deployed MAT sha256={digest}")
     finally:

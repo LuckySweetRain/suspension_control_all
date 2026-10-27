@@ -13,7 +13,7 @@ class ViewerClosed(RuntimeError):
 
 
 class LiveView:
-    def __init__(self):
+    def __init__(self, footnote=None):
         self.root = tk.Tk()
         self.root.title("CARLA + CarSim + Orin — 实时联合仿真")
         self.root.configure(bg="#101827")
@@ -49,7 +49,8 @@ class LiveView:
         self.plot.pack(padx=12, pady=6)
         tk.Label(
             self.root,
-            text="当前路面与预瞄来自 CarSim；相机尚未用于感知控制。关闭窗口可停止本次运行。",
+            text=footnote
+            or "当前路面与预瞄来自 CarSim；相机尚未用于感知控制。关闭窗口可停止本次运行。",
             bg="#101827",
             fg="#94a3b8",
             font=("Microsoft YaHei UI", 9),
