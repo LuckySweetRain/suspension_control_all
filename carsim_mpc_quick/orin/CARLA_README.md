@@ -52,7 +52,16 @@ conda run -n carla0911 python carsim_mpc_quick/orin/carla_stack.py --mode plugin
 
 # Python 统一推进的 CARLA + CarSim + Orin 悬架控制闭环
 conda run -n carla0911 python carsim_mpc_quick/orin/carla_stack.py --mode triple --seconds 12
+
+# 可视化运行：实时相机、控制轴力、垂向加速度与通信耗时
+conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/carla_stack.py --mode triple --seconds 12 --visualize
 ```
+
+`--visualize` 使用已安装的 Tk/Pillow 显示真实 CARLA 相机，不需要重启后台 CARLA。
+运行结束后保留最后一帧、控制曲线与数据，关闭窗口才退出；仿真中的关闭操作会中止该次运行，
+释放 CarSim/Orin 连接、销毁本次车辆/相机并恢复世界设置，报告记录为用户取消。
+可视化已实测 12 s、240 帧、1200 次控制，无回退；工件为
+`results/carla_stack/triple_20261027_164745/`。该次最大请求往返约 82.81 ms，仍无硬实时保证。
 
 必须使用 `conda run` 或正确激活环境，以加载 Conda 的 DLL 搜索路径。
 测试脚本在启动时校验客户端/服务器版本、CarSim 的 8 进口/81 出口/1 ms 步长、

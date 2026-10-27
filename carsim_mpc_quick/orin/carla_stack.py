@@ -135,6 +135,8 @@ def run(args):
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
     actors, solver, connection = [], None, None
+    viewer = None
+    trace = []
     report = {
         "mode": args.mode,
         "client_version": client.get_client_version(),
@@ -166,6 +168,11 @@ def run(args):
         camera.listen(images.put)
         first = image_at(images, world.tick())
         first.save_to_disk(str(output / "first.png"))
+        if args.visualize:
+            from live_view import LiveView
+
+            viewer = LiveView()
+            viewer.show(first)
         start_position = vehicle.get_location()
         ticks, control_steps, max_rtt, max_violation = 0, 0, 0.0, 0.0
         report["carsim_python_methods"] = [s for s in dir(vehicle) if "carsim" in s.lower()]
@@ -195,7 +202,6 @@ def run(args):
                 (ROOT / "results/orin/quick_mpc_data.mat").read_bytes()
             ).hexdigest()
             values = solver.initial
-            trace = []
             for seq in range(round(args.seconds / 0.01)):
                 request = {"version": 1, "seq": seq, "time": seq * 0.01, "exports": values[:77]}
                 begin = time.perf_counter()
@@ -244,13 +250,18 @@ def run(args):
                     vehicle.set_transform(carla.Transform(location, rotation))
                     last = image_at(images, world.tick())
                     ticks += 1
-            (output / "trace.json").write_text(json.dumps(trace, allow_nan=False))
+                    if viewer is not None:
+                        viewer.show(
+                            last, solver.t, values, reply["diagnostics"], elapsed, control_steps
+                        )
             report["road_source"] = "CarSim dataset; camera preview not yet fed to Orin"
         else:
             vehicle.apply_control(carla.VehicleControl(throttle=0.3))
             for _ in range(round(args.seconds / 0.05)):
                 last = image_at(images, world.tick())
                 ticks += 1
+                if viewer is not None:
+                    viewer.show(last)
         last.save_to_disk(str(output / "last.png"))
         displacement = vehicle.get_location().distance(start_position)
         if displacement < 0.1:
@@ -265,6 +276,10 @@ def run(args):
         )
     except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
+        if type(exc).__name__ == "ViewerClosed":
+            report["cancelled_by_user"] = True
+        if viewer is not None and not viewer.closed:
+            viewer.finish("运行停止：" + report["error"])
         raise
     finally:
         if connection is not None:
@@ -276,9 +291,14 @@ def run(args):
                 actor.stop()
             actor.destroy()
         world.apply_settings(original)
+        if trace:
+            (output / "trace.json").write_text(json.dumps(trace, allow_nan=False))
         (output / "report.json").write_text(json.dumps(report, indent=2))
         print(json.dumps(report, indent=2))
         print("Artifacts:", output)
+    if viewer is not None:
+        viewer.finish(f"仿真完成 · {args.seconds:g} 秒 · 可保留窗口查看曲线，关闭窗口退出")
+    return viewer
 
 
 if __name__ == "__main__":
@@ -286,7 +306,10 @@ if __name__ == "__main__":
     parser.add_argument("--mode", choices=["scene", "plugin", "triple"], default="scene")
     parser.add_argument("--seconds", type=float, default=2)
     parser.add_argument("--orin-host", default="192.168.50.2")
+    parser.add_argument("--visualize", action="store_true", help="显示实时相机、控制力与加速度曲线")
     arguments = parser.parse_args()
     if not math.isfinite(arguments.seconds) or arguments.seconds < 0.05 or arguments.seconds > 30:
         parser.error("seconds must be between 0.05 and 30")
-    run(arguments)
+    live = run(arguments)
+    if live is not None:
+        live.wait()
