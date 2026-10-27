@@ -25,6 +25,7 @@ class DepthPreview:
         self.profile_cache = None
         self.coverage_fractions = [0.0, 0.0]
         self.mask_mode = None
+        self.spatial_tree = None
 
     def observe(self, packet):
         mode = packet.get("road_mask_mode", "semantic_truth")
@@ -107,11 +108,16 @@ class DepthPreview:
         self.points = np.concatenate((self.points, cloud))
         # Retain a bounded local history to cover the road now occluded beneath the car.
         center = float(transform[0, 3])
-        self.points = self.points[
-            (self.points[:, 0] > center - 8)
-            & (self.points[:, 0] < center + 20)
-            & (np.abs(self.points[:, 1] - transform[1, 3]) < 8)
-        ]
+        if packet.get("driving_preview_mode"):
+            self.points = self.points[
+                np.linalg.norm(self.points[:, :2] - transform[:2, 3], axis=1) < 24
+            ]
+        else:
+            self.points = self.points[
+                (self.points[:, 0] > center - 8)
+                & (self.points[:, 0] < center + 20)
+                & (np.abs(self.points[:, 1] - transform[1, 3]) < 8)
+            ]
         # Keep spatial coverage, not the last N pixels. Repeated near-field
         # pixels otherwise evict a road patch before the rear axle reaches it.
         # Retain the newest observation in each 5 cm x 10 cm ground cell.
@@ -121,11 +127,14 @@ class DepthPreview:
         self.frame, self.observed_time = int(packet["frame"]), float(packet["sim_time"])
         self.valid_points = len(cloud)
         self.profile_cache = None
+        self.spatial_tree = None
 
-    def preview(self, y, cfg, now):
+    def preview(self, y, cfg, now, driving_path=None):
         if self.observed_time is None or not -1e-6 <= now - self.observed_time <= 0.15:
             raise ValueError("Missing or stale camera preview; no static-road fallback")
         y = np.asarray(y, dtype=float)[-39:]
+        if driving_path is not None:
+            return self._driving_preview(y, cfg, now, driving_path)
         mask = np.abs(self.points[:, 1] - np.mean(y[34:38])) < 1.2
         points = self.points[mask]
         if len(points) < 50:
@@ -165,6 +174,15 @@ class DepthPreview:
         bound = np.column_stack((hb_f, np.full(n, 0.03 * v), hb_r, np.full(n, 0.03 * v))).ravel()
         if not np.all(np.isfinite(w)):
             raise ValueError("Nonfinite image preview")
+        return (
+            w,
+            bound,
+            [float(distances[-1]), float(distances[-1]), min(self.coverage_fractions)],
+            self._state_offset(y, cfg, now),
+        )
+
+    def _state_offset(self, y, cfg, now, velocity_xy=None):
+        xf, xr = np.mean(y[[30, 32]]), np.mean(y[[31, 33]])
         yf, yr = np.mean(y[[34, 36]]), np.mean(y[[35, 37]])
         plane_at_axles = (
             self.reference_plane[0] + np.array([[xf, yf], [xr, yr]]) @ self.reference_plane[1:]
@@ -175,6 +193,8 @@ class DepthPreview:
         # Transform BOTH axle heights, body heave and pitch into that same frame.
         # This preserves suspension travel and physical tyre deflection exactly.
         axle_velocity = np.full(2, self.reference_plane[1] * y[38] / 3.6)
+        if velocity_xy is not None:
+            axle_velocity[:] = self.reference_plane[1:] @ velocity_xy
         if self.previous_reference is not None:
             previous_time, previous_plane = self.previous_reference
             if now > previous_time:
@@ -197,9 +217,100 @@ class DepthPreview:
                 axle_velocity[1],
             ]
         )
+        return offset
+
+    def _driving_preview(self, y, cfg, now, path):
+        """Sample the measured 2D road cloud along a short commanded-curvature arc.
+
+        The four actual tyre positions anchor the rollout. Neither map elevation
+        nor generated-road formulas enter this path; missing coverage disables
+        active control through the existing warmup supervisor.
+        """
+        from scipy.spatial import cKDTree
+
+        pose = np.asarray(path["pose"], dtype=float)
+        steer = float(path["steer_rad"])
+        lateral_speed = float(path.get("lateral_speed_mps", 0.0))
+        if (
+            pose.shape != (3,)
+            or not np.isfinite(pose).all()
+            or not np.isfinite([steer, lateral_speed]).all()
+        ):
+            raise ValueError("Invalid driving preview pose or steering")
+        n, dt = int(cfg["horizon"]), cfg["control_dt"]
+        speed = max(abs(y[38]) / 3.6, cfg["preview"]["minimum_speed_mps"])
+        distances = np.arange(n + 1) * speed * dt
+        curvature = np.tan(steer) / (cfg["vehicle"]["a"] + cfg["vehicle"]["b"])
+        yaw = pose[2]
+        angles = distances * curvature
+        if abs(curvature) < 1e-8:
+            shift = distances[:, None] * np.array([np.cos(yaw), np.sin(yaw)])
+        else:
+            shift = (
+                np.column_stack(
+                    (np.sin(yaw + angles) - np.sin(yaw), np.cos(yaw) - np.cos(yaw + angles))
+                )
+                / curvature
+            )
+        if abs(curvature) < 1e-8:
+            shift += (np.arange(n + 1) * dt * lateral_speed)[:, None] * np.array(
+                [-np.sin(yaw), np.cos(yaw)]
+            )
+        else:
+            shift += (
+                lateral_speed
+                / (speed * curvature)
+                * np.column_stack(
+                    (np.cos(yaw + angles) - np.cos(yaw), np.sin(yaw + angles) - np.sin(yaw))
+                )
+            )
+        wheels = np.column_stack((y[30:34], y[34:38]))
+        delta = wheels - pose[:2]
+        c, s = np.cos(angles), np.sin(angles)
+        rotation = np.stack((np.column_stack((c, -s)), np.column_stack((s, c))), axis=1)
+        targets = pose[:2] + shift[:, None, :] + np.einsum("tij,wj->twi", rotation, delta)
+        if self.spatial_tree is None:
+            self.spatial_tree = cKDTree(self.points[:, :2])
+        distance, indices = self.spatial_tree.query(targets.reshape(-1, 2), k=8)
+        residuals = self.points[:, 2] - (
+            self.reference_plane[0] + self.points[:, :2] @ self.reference_plane[1:]
+        )
+        height, observed = [], []
+        for d, index in zip(distance, indices):
+            valid = d <= 0.25
+            observed.append(np.count_nonzero(valid) >= 3 and d[0] <= 0.15)
+            height.append(float(np.median(residuals[index[valid] if np.any(valid) else index])))
+        height = np.asarray(height).reshape(n + 1, 4)
+        observed = np.asarray(observed).reshape(n + 1, 4)
+        front, rear = np.mean(height[:, [0, 2]], axis=1), np.mean(height[:, [1, 3]], axis=1)
+        interval_observed = observed[:-1] & observed[1:]
+        seen_front, seen_rear = (
+            np.all(interval_observed[:, [0, 2]], axis=1),
+            np.all(interval_observed[:, [1, 3]], axis=1),
+        )
+        self.coverage_fractions = [float(np.mean(seen_front)), float(np.mean(seen_rear))]
+        w = np.column_stack(
+            (front[:-1], np.diff(front) / dt, rear[:-1], np.diff(rear) / dt)
+        ).ravel()
+        bound = np.column_stack(
+            (
+                np.where(seen_front, 0.015, 0.030),
+                np.full(n, 0.03 * speed),
+                np.where(seen_rear, 0.015, 0.030),
+                np.full(n, 0.03 * speed),
+            )
+        ).ravel()
+        if not np.isfinite(w).all():
+            raise ValueError("Nonfinite curved-path image preview")
         return (
             w,
             bound,
             [float(distances[-1]), float(distances[-1]), min(self.coverage_fractions)],
-            offset,
+            self._state_offset(
+                y,
+                cfg,
+                now,
+                np.array([np.cos(yaw), np.sin(yaw)]) * (y[38] / 3.6)
+                + np.array([-np.sin(yaw), np.cos(yaw)]) * lateral_speed,
+            ),
         )

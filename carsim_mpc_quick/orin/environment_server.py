@@ -9,6 +9,7 @@ import time
 
 from controller import Controller
 from depth_preview import DepthPreview
+from driving import DrivingSession
 
 
 def serve():
@@ -24,9 +25,12 @@ def serve():
             connection, _ = listener.accept()
             controller.reset()
             vision = DepthPreview()
+            driving = DrivingSession()
             seq = 0
             with connection:
-                connection.settimeout(60)
+                # Offline synchronous model inference can pause the simulator
+                # during first-use CUDA compilation without advancing its clock.
+                connection.settimeout(300)
                 connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 try:
                     with connection.makefile("rb") as incoming:
@@ -47,7 +51,19 @@ def serve():
                             begin = time.perf_counter()
                             if request.get("vision") is not None:
                                 vision.observe(request["vision"])
-                            preview = vision.preview(request["exports"], controller.c, now)
+                            driving_control, driving_path = None, None
+                            if request.get("driving") is not None:
+                                driving_control = driving.step(request["driving"], now)
+                                driving_path = dict(
+                                    pose=request["driving"]["pose"],
+                                    steer_rad=driving_control["steer_rad"],
+                                    lateral_speed_mps=request["driving"].get(
+                                        "lateral_speed_mps", 0.0
+                                    ),
+                                )
+                            preview = vision.preview(
+                                request["exports"], controller.c, now, driving_path
+                            )
                             contact = bool(request.get("contact", {}).get("active", False))
                             preview_warmup = min(vision.coverage_fractions) < 1.0
                             force, diag, fallback = controller.step(
@@ -79,6 +95,9 @@ def serve():
                                 contact_supervisor=contact,
                                 compute_ms=(time.perf_counter() - begin) * 1000,
                             )
+                            if driving_control is not None:
+                                reply["driving"] = driving_control
+                                reply["compute_ms"] = (time.perf_counter() - begin) * 1000
                             connection.sendall((json.dumps(reply, allow_nan=False) + "\n").encode())
                             seq += 1
                 except (ValueError, KeyError, TypeError, OSError) as error:

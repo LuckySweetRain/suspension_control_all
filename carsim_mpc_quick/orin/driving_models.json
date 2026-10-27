@@ -1,0 +1,40 @@
+{
+  "runtime_python": "/mnt/nvme/qwen-drive/environments/qwen-drive-py312/bin/python",
+  "qwen_code": "/mnt/nvme/qwen-drive/code/Qwen-Drive-1.0/src",
+  "qwen_weights": "/mnt/nvme/qwen-drive/models/Qwen-Drive-1.0-4B",
+  "validated_runtime": {
+    "python": "3.12.3",
+    "jetson_linux": "39.2",
+    "cuda": "13.2",
+    "torch": "2.13.0+cu132",
+    "torchvision": "0.28.0+cu132",
+    "transformers": "5.14.1"
+  },
+  "models": {
+    "qwen": {
+      "identity": "qwen-drive-1.0-sft",
+      "source": "https://github.com/QwenLM/Qwen-Drive-1.0",
+      "weights": "https://huggingface.co/Qwen/Qwen-Drive-1.0-4B",
+      "planner": "planner-sft",
+      "provenance": "official release; existing Orin installation"
+    },
+    "transfuser": {
+      "identity": "transfuser-cvpr2021-official",
+      "source": "https://github.com/autonomousvision/transfuser",
+      "revision": "6d1d0421598e3767ced97a113739a40a621cdc25",
+      "branch": "cvpr2021",
+      "weights": "https://s3.eu-central-1.amazonaws.com/avg-projects/transfuser/models.zip",
+      "checkpoint_sha256": "16256a96134d9f83fdea30bfaf04b26a3710896e64be11be03d8f282946f5994",
+      "provenance": "official CVPR2021 checkpoint, not the 2022 architecture"
+    },
+    "tcp": {
+      "identity": "tcp-third-party-reproduction",
+      "source": "https://github.com/OpenDriveLab/TCP",
+      "revision": "73cc1ddfb615439b3f035c0285f5c9ffce350418",
+      "weights": "https://huggingface.co/maxim-igenbergs/tcp-carla-repro",
+      "weights_revision": "7a61a591b48f049d9a28581e441edbafb50ec82b",
+      "checkpoint_sha256": "1792d62a4c7764f6622d4d20b8585bd785d739d752aef2b6447c081c362f7d5e",
+      "provenance": "third-party reproduction; not official paper or leaderboard weights"
+    }
+  }
+}

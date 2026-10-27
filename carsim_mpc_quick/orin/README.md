@@ -133,4 +133,9 @@ TCP 读超时默认 100 ms，不代表 10 ms 实时截止。角点力维持 ±50
 这些检查证明当前接口和短时控制流程可以运行，不证明长时稳定性或控制性能改善。
 
 本项目 Python 通用回归使用 Conda 的 `suspension-control` 环境；不要运行 pytest。
-Ruff 检查 Orin 子目录时须加 `--no-force-exclude`，因为原子项目默认在排除列表内。
+根目录 `python -m ruff check .` 已覆盖 Orin 子目录；子目录 Ruff 配置保留 Python 3.7 前端兼容性。
+
+## 自动驾驶模型与横纵向 PID
+
+TransFuser、TCP、Qwen-Drive 的 Orin 部署、模型切换、Town03 / 弯道起伏路可视化入口、
+实际闭环结果及当前限制见 [AUTODRIVING.md](AUTODRIVING.md)。垂向继续使用原 MPC。

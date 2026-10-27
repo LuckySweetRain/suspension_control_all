@@ -57,6 +57,7 @@ def deploy(host="192.168.1.41"):
                 "qp_native.cpp",
                 "depth_preview.py",
                 "environment_server.py",
+                "driving.py",
             ):
                 sftp.put(str(source / filename), f"{remote}/{filename}")
             sftp.put(str(mat), f"{remote}/quick_mpc_data.mat")

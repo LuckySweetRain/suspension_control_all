@@ -12,11 +12,11 @@ import numpy as np
 
 from carla_contact import FrontalContact
 from carla_terrain import CarlaTerrain
-from rough_road import PROFILES, generate_world, specification, verify_mesh
+from rough_road import PROFILES, generate_world, road_bounds, specification, verify_mesh
 from runtime.carsim import CarSim
 from runtime.paths import ROOT, load_carla
 from runtime.protocol import OrinConnection
-from runtime.sensors import image_at, pack_vision, spawn_camera
+from runtime.sensors import image_at, pack_vision, spawn_camera, spawn_driving_lidar
 
 
 def timing_summary(trace):
@@ -38,6 +38,8 @@ def timing_summary(trace):
 
 def run(args):
     carla = load_carla()
+    planner_name = getattr(args, "planner", None)
+    curvature = getattr(args, "road_curvature", 0.0)
 
     output = ROOT / "results/carla_environment" / time.strftime("%Y%m%d_%H%M%S")
     output.mkdir(parents=True)
@@ -50,8 +52,8 @@ def run(args):
     mesh_check = None
     if procedural:
         try:
-            world = generate_world(client, carla, args.road_profile, output)
-            mesh_check = verify_mesh(world, carla, args.road_profile, output)
+            world = generate_world(client, carla, args.road_profile, output, curvature=curvature)
+            mesh_check = verify_mesh(world, carla, args.road_profile, output, curvature=curvature)
         except Exception as error:
             (output / "report.json").write_text(
                 json.dumps(
@@ -83,6 +85,8 @@ def run(args):
     settings = world.get_settings()
     settings.synchronous_mode, settings.fixed_delta_seconds = True, 0.05
     actors, solver, connection, viewer, contact = [], None, None, None, None
+    planner_connection, driving_observation = None, None
+    plans = []
     wall_start = time.perf_counter()
     trace, vision_audit = [], []
     report = dict(
@@ -99,7 +103,9 @@ def run(args):
         camera_dt_s=0.05,
         map=world.get_map().name,
         road_profile=args.road_profile,
+        road_curvature_per_m=curvature,
         mesh_check=mesh_check,
+        driving_planner=planner_name,
     )
     if procedural:
         report["semantic_mask"] = "depth within known test-road XY footprint; no road semantic tag"
@@ -112,7 +118,9 @@ def run(args):
             spawn.location.z += 0.3
         else:
             spawn = world.get_map().get_spawn_points()[args.spawn]
-        terrain = CarlaTerrain(world, carla, spawn, procedural_road=procedural)
+        terrain = CarlaTerrain(
+            world, carla, spawn, procedural_road=procedural, road_bounds=road_bounds(curvature)
+        )
         vehicle = world.spawn_actor(
             world.get_blueprint_library().find("vehicle.tesla.model3"), spawn
         )
@@ -154,6 +162,50 @@ def run(args):
                 lens_kcube=0,
             )
             actors.append(sensor)
+        if planner_name:
+            from driving_observation import CAMERA_VIEWS, DrivingObservation
+
+            driving_observation = DrivingObservation(planner_name)
+            camera_specs = (
+                [(name, yaw, 1.3, 2.3, 640, 360) for name, yaw in zip(CAMERA_VIEWS, (0, -60, 60))]
+                if planner_name == "qwen"
+                else [("driving_rgb", 0, -1.5, 2.0, 900, 256)]
+                if planner_name == "tcp"
+                else [("driving_rgb", 0, 1.3, 2.3, 400, 300)]
+            )
+            for name, yaw, x, z, width, height in camera_specs:
+                sensor, queues[name] = spawn_camera(
+                    world,
+                    carla,
+                    "rgb",
+                    carla.Transform(carla.Location(x=x, z=z), carla.Rotation(yaw=yaw)),
+                    width,
+                    height,
+                    fov=100,
+                    attach_to=vehicle,
+                    lens_k=0,
+                    lens_kcube=0,
+                )
+                actors.append(sensor)
+            if planner_name == "transfuser":
+                sensor, queues["driving_lidar"] = spawn_driving_lidar(world, carla, vehicle)
+                actors.append(sensor)
+                report["driving_lidar"] = dict(
+                    channels=64, points_per_second=600000, rotation_hz=20, yaw_deg=-90, z_m=2.5
+                )
+            planner_connection = OrinConnection(args.orin_host, 55003, timeout=180)
+            status, _ = planner_connection.exchange({"op": "status"})
+            expected_identity = {
+                "qwen": "qwen-drive-1.0-sft",
+                "tcp": "tcp-third-party-reproduction",
+                "transfuser": "transfuser-cvpr2021-official",
+            }[planner_name]
+            if status.get("model") != expected_identity or not status.get("ready"):
+                raise RuntimeError("Selected Orin model is not ready: " + str(status))
+            report["driving_scope"] = (
+                "lane following with an explicit next-junction navigation hint; not a driving benchmark"
+            )
+            report["driving_control_location"] = "Orin: shared PID in MPC endpoint"
         if args.obstacle_at is not None:
             p = terrain.to_world(args.obstacle_at, 0, 0.05)
             barrier = world.spawn_actor(
@@ -171,11 +223,16 @@ def run(args):
 
             mask_description = "已知道路范围的深度筛选" if procedural else "语义真值掩码"
             viewer = LiveView(
-                "CARLA 地形 · Orin 深度预瞄（" + mask_description + "）· 离线同步仿真"
+                "CARLA 地形 · Orin 深度预瞄（" + mask_description + "）· 离线同步仿真",
+                heading=(planner_name.upper() + "（Orin）· PID 跟踪 · MPC 悬架")
+                if planner_name
+                else None,
             )
             viewer.root.title("CARLA 环境反馈闭环 — 地形与深度预瞄")
             if procedural:
                 viewer.root.title("CARLA 起伏路面闭环 — " + args.road_profile)
+            if planner_name:
+                viewer.root.title(planner_name.upper() + " · Orin PID/MPC · " + args.road_profile)
             viewer.show(images["rgb"])
         # Calibrate the CarSim CG/path-origin offset before terrain initialization.
         # Changing that offset afterwards would move a slope beneath settled tyres.
@@ -185,12 +242,18 @@ def run(args):
         terrain.origin_cs = (reference.initial[77], reference.initial[78])
         terrain.origin_calibrated = True
         reference.close()
-        solver = CarSim(output, terrain=terrain, contact=True)
+        solver = CarSim(output, terrain=terrain, contact=True, driving=bool(planner_name))
         contact = FrontalContact(world, carla, terrain, vehicle)
         connection = OrinConnection(args.orin_host, 55002)
         digest = hashlib.sha256((ROOT / "results/orin/quick_mpc_data.mat").read_bytes()).hexdigest()
         values = solver.initial
+        if driving_observation is not None:
+            driving_observation.observe_state(values, 0)
+            driving_observation.observe_images(images, 0)
         vision = pack_vision(images["depth"], images["semantic"], terrain, 0)
+        if planner_name:
+            vision["driving_preview_mode"] = True
+            report["driving_preview"] = "four-tyre spatial depth sampling along commanded curvature"
         # One-time equilibrium calibration, not future road preview. The dynamics
         # contact surface defines where the relative CarSim state was initialized.
         initial_heights = [terrain.height(values[i], values[i + 4]) for i in range(68, 72)]
@@ -200,6 +263,60 @@ def run(args):
         (output / "first_vision_packet.json").write_text(json.dumps(vision))
         for seq in range(round(args.seconds / 0.01)):
             cycle_start = time.perf_counter()
+            plan = None
+            if driving_observation is not None and driving_observation.ready and seq % 20 == 0:
+                nav_command = {"straight": 0, "left": 1, "right": 2}[
+                    getattr(args, "nav_command", "straight")
+                ]
+                target_xy = None
+                if planner_name != "qwen":
+                    from driving import Pose
+
+                    waypoint = world.get_map().get_waypoint(vehicle.get_location())
+                    upcoming = waypoint.next(12.0)
+                    if not upcoming:
+                        raise RuntimeError("Navigation route ended; no future lane waypoint")
+                    desired_turn = {0: 0, 1: -90, 2: 90}[nav_command]
+
+                    def turn_score(candidate, waypoint=waypoint, desired_turn=desired_turn):
+                        delta = (
+                            candidate.transform.rotation.yaw - waypoint.transform.rotation.yaw + 180
+                        ) % 360 - 180
+                        return abs(delta - desired_turn)
+
+                    point = min(upcoming, key=turn_score).transform.location
+                    dx, dy = point.x - spawn.location.x, point.y - spawn.location.y
+                    target = (
+                        terrain.cs * dx + terrain.sn * dy + terrain.origin_cs[0],
+                        terrain.sn * dx - terrain.cs * dy + terrain.origin_cs[1],
+                    )
+                    target_xy = Pose(values[77], values[78], math.radians(values[79])).local_point(
+                        *target
+                    )
+                packet = driving_observation.request(
+                    len(plans), nav_command=nav_command, target_xy_m=target_xy
+                )
+                if not plans:
+                    (output / "first_driving_request.json").write_text(json.dumps(packet))
+                if viewer is None:
+                    plan, planner_rpc_ms = planner_connection.exchange(packet)
+                else:
+                    plan, planner_rpc_ms = viewer.wait_for_planner(
+                        lambda packet=packet: planner_connection.exchange(packet)
+                    )
+                if plan.get("version") != 3 or plan.get("seq") != packet["seq"]:
+                    raise RuntimeError("Rejected planner reply: " + str(plan))
+                expected_model = {
+                    "qwen": "qwen-drive-1.0-sft",
+                    "tcp": "tcp-third-party-reproduction",
+                    "transfuser": "transfuser-cvpr2021-official",
+                }[planner_name]
+                if (
+                    plan.get("model") != expected_model
+                    or plan["captured_at"] != packet["captured_at"]
+                ):
+                    raise RuntimeError("Planner identity or capture timestamp mismatch")
+                plans.append(dict(plan, rpc_ms=planner_rpc_ms))
             fx, collision = contact.force(values, seq * 0.01)
             request = dict(
                 version=2,
@@ -209,6 +326,8 @@ def run(args):
                 contact=collision,
                 vision=vision,
             )
+            if driving_observation is not None:
+                request["driving"] = driving_observation.driving_state(values, plan)
             start = time.perf_counter()
             reply, rpc_ms = connection.exchange(request)
             if (
@@ -224,7 +343,12 @@ def run(args):
             if len(forces) != 8 or not all(math.isfinite(f) and abs(f) <= 5000 for f in forces):
                 raise RuntimeError("Invalid actuator force")
             solver_start = time.perf_counter()
-            values = solver.step(forces, fx)
+            driving_inputs = None
+            if driving_observation is not None:
+                driving_inputs = reply["driving"]["carsim_inputs"]
+            values = solver.step(forces, fx, driving_inputs=driving_inputs)
+            if driving_observation is not None:
+                driving_observation.observe_state(values, solver.t)
             solver_ms = (time.perf_counter() - solver_start) * 1000
             elapsed = (time.perf_counter() - start) * 1000
             trace.append(
@@ -257,12 +381,30 @@ def run(args):
                 )
                 frame = world.tick()
                 images = {k: image_at(q, frame) for k, q in queues.items()}
+                if driving_observation is not None:
+                    driving_observation.observe_images(images, solver.t)
+                    lane = world.get_map().get_waypoint(position)
+                    right = lane.transform.get_right_vector()
+                    lateral = (position.x - lane.transform.location.x) * right.x + (
+                        position.y - lane.transform.location.y
+                    ) * right.y
+                    heading_error = (
+                        spawn.rotation.yaw - values[79] - lane.transform.rotation.yaw + 180
+                    ) % 360 - 180
+                    trace[-1]["lane_tracking"] = dict(
+                        lateral_m=lateral, heading_error_deg=heading_error, station_m=lane.s
+                    )
                 vision = pack_vision(images["depth"], images["semantic"], terrain, solver.t)
+                if planner_name:
+                    vision["driving_preview_mode"] = True
                 if procedural:
                     for kind, station in [("wave", 31.25), ("bump", 62), ("pothole", 87)]:
                         if args.road_profile not in (kind, "combined") or kind in captures:
                             continue
-                        if position.x >= station - 4:
+                        current_station = (
+                            world.get_map().get_waypoint(position).s if curvature else position.x
+                        )
+                        if current_station >= station - 4:
                             sample_folder = output / ("approach_" + kind)
                             sample_folder.mkdir()
                             sample = dict(vision, initial_road_heights_m=initial_road)
@@ -287,6 +429,7 @@ def run(args):
                         rpc_ms,
                         seq + 1,
                         road_preview=reply["image_preview_w"][:4] if procedural else None,
+                        driving=reply.get("driving"),
                     )
             trace[-1]["cycle_ms"] = (time.perf_counter() - cycle_start) * 1000
         images["rgb"].save_to_disk(str(output / "last.png"))
@@ -318,6 +461,8 @@ def run(args):
     finally:
         if connection is not None:
             connection.close()
+        if planner_connection is not None:
+            planner_connection.close()
         if solver is not None:
             solver.close()
         for actor in reversed(actors):
@@ -335,6 +480,18 @@ def run(args):
         (output / "trace.json").write_text(json.dumps(trace, allow_nan=False))
         (output / "vision_frames.json").write_text(json.dumps(vision_audit))
         (output / "report.json").write_text(json.dumps(report, indent=2))
+        if planner_name:
+            (output / "driving_plans.json").write_text(json.dumps(plans, indent=2))
+            tracking = [row["lane_tracking"] for row in trace if "lane_tracking" in row]
+            report["driving_validation"] = dict(
+                scope="integration_smoke; not a validated autonomous driving benchmark",
+                model_plan_count=len(plans),
+                max_lateral_error_m=max((abs(row["lateral_m"]) for row in tracking), default=None),
+                max_heading_error_deg=max(
+                    (abs(row["heading_error_deg"]) for row in tracking), default=None
+                ),
+            )
+            (output / "report.json").write_text(json.dumps(report, indent=2))
         print(json.dumps(report, indent=2))
         print("Artifacts:", output, flush=True)
     if viewer is not None:
@@ -354,7 +511,30 @@ if __name__ == "__main__":
     parser.add_argument("--obstacle-at", type=float)
     parser.add_argument("--visualize", action="store_true")
     parser.add_argument("--road-profile", choices=("town",) + PROFILES, default="town")
+    parser.add_argument(
+        "--nav-command",
+        choices=("straight", "left", "right"),
+        default="straight",
+        help="Next junction route hint; model still predicts the trajectory",
+    )
+    parser.add_argument(
+        "--road-curvature",
+        type=float,
+        default=0.0,
+        help="OpenDRIVE curvature [1/m], positive left; +/-0.01 maximum",
+    )
+    parser.add_argument(
+        "--planner",
+        choices=("qwen", "tcp", "transfuser"),
+        help="Orin real-weight driving planner for CARLA town or procedural roads",
+    )
     arguments = parser.parse_args()
+    if not math.isfinite(arguments.road_curvature) or abs(arguments.road_curvature) > 0.01:
+        parser.error("road-curvature must be finite and within +/-0.01 per metre")
+    if arguments.road_curvature and (not arguments.planner or arguments.road_profile == "town"):
+        parser.error(
+            "Curved test roads require an Orin driving planner and a procedural road profile"
+        )
     if not math.isfinite(arguments.seconds) or not 0.05 <= arguments.seconds <= 30:
         parser.error("seconds must be between 0.05 and 30")
     if arguments.spawn is not None and arguments.spawn < 0:

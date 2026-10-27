@@ -26,6 +26,11 @@ class OrinConnection:
         return json.loads(line), elapsed_ms
 
     def close(self):
+        # Interrupt a pending planner read before closing its buffered wrapper.
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         try:
             self.incoming.close()
         finally:

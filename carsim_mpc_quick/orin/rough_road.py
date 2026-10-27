@@ -50,9 +50,34 @@ def specification(profile):
     )
 
 
-def opendrive(profile, parallel=False):
+def road_bounds(curvature=0.0):
+    if not curvature:
+        return (0, 160, 0, 4)
+    points = []
+    for station in range(161):
+        angle = curvature * station
+        for offset in (0, 4):
+            points.append(
+                (
+                    (1 / curvature + offset) * math.sin(angle),
+                    -1 / curvature + (1 / curvature + offset) * math.cos(angle),
+                )
+            )
+    return (
+        min(p[0] for p in points) - 0.5,
+        max(p[0] for p in points) + 0.5,
+        min(p[1] for p in points) - 0.5,
+        max(p[1] for p in points) + 0.5,
+    )
+
+
+def opendrive(profile, parallel=False, curvature=0.0):
     if profile not in PROFILES:
         raise ValueError("Unknown rough-road profile")
+    if not math.isfinite(curvature) or abs(curvature) > 0.01:
+        raise ValueError("Road curvature must be finite and within +/-0.01 per metre")
+    if parallel and curvature:
+        raise ValueError("Curved parallel comparison tracks are not yet supported")
     root = ET.Element("OpenDRIVE")
     ET.SubElement(
         root,
@@ -78,7 +103,10 @@ def opendrive(profile, parallel=False):
     ET.SubElement(road_type, "speed", max="35", unit="km/h")
     plan = ET.SubElement(road, "planView")
     geometry = ET.SubElement(plan, "geometry", s="0", x="0", y="0", hdg="0", length=str(LENGTH_M))
-    ET.SubElement(geometry, "line")
+    if curvature:
+        ET.SubElement(geometry, "arc", curvature=str(curvature))
+    else:
+        ET.SubElement(geometry, "line")
     elevations = ET.SubElement(road, "elevationProfile")
     step = 0.1
     for index in range(round(LENGTH_M / step)):
@@ -126,11 +154,11 @@ def opendrive(profile, parallel=False):
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
 
 
-def generate_world(client, carla, profile, output, parallel=False):
+def generate_world(client, carla, profile, output, parallel=False, curvature=0.0):
     """Reset an otherwise empty world; persist the exact mesh input for replay."""
     if list(client.get_world().get_actors().filter("vehicle.*")):
         raise RuntimeError("Another vehicle simulation is running; cannot replace its world")
-    text = opendrive(profile, parallel=parallel)
+    text = opendrive(profile, parallel=parallel, curvature=curvature)
     (output / "road.xodr").write_text(text, encoding="utf-8")
     world = client.generate_opendrive_world(
         text,
@@ -147,15 +175,27 @@ def generate_world(client, carla, profile, output, parallel=False):
 
 
 def verify_mesh(
-    world, carla, profile, output, center_y=LANE_CENTER_Y_M, filename="road_mesh_check.json"
+    world,
+    carla,
+    profile,
+    output,
+    center_y=LANE_CENTER_Y_M,
+    filename="road_mesh_check.json",
+    curvature=0.0,
 ):
     """Independent vertical scene intersections against the authored profile."""
     rows = []
+    road_map = world.get_map() if curvature else None
     for index in range(1, 601):
         station = index * 0.2
+        point = (
+            road_map.get_waypoint_xodr(1, -1, station).transform.location
+            if curvature
+            else carla.Location(station, center_y, 0)
+        )
         hits = world.cast_ray(
-            carla.Location(station, center_y, 2),
-            carla.Location(station, center_y, -2),
+            carla.Location(point.x, point.y, 2),
+            carla.Location(point.x, point.y, -2),
         )
         if not hits:
             raise RuntimeError("Generated road has no collision surface at station " + str(station))

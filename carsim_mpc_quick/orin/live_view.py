@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 import tkinter as tk
 from collections import deque
 
@@ -13,7 +15,7 @@ class ViewerClosed(RuntimeError):
 
 
 class LiveView:
-    def __init__(self, footnote=None):
+    def __init__(self, footnote=None, heading=None):
         self.root = tk.Tk()
         self.root.title("CARLA + CarSim + Orin — 实时联合仿真")
         self.root.configure(bg="#101827")
@@ -23,7 +25,7 @@ class LiveView:
         self.metrics = tk.StringVar(value="等待控制数据")
         tk.Label(
             self.root,
-            text="CARLA 场景 · CarSim 动力学 · Orin 悬架控制",
+            text=heading or "CARLA 场景 · CarSim 动力学 · Orin 悬架控制",
             bg="#101827",
             fg="#f1f5f9",
             font=("Microsoft YaHei UI", 16, "bold"),
@@ -65,7 +67,15 @@ class LiveView:
         self.root.destroy()
 
     def show(
-        self, image, sim_time=0, values=None, diagnostics=None, rtt=0, steps=0, road_preview=None
+        self,
+        image,
+        sim_time=0,
+        values=None,
+        diagnostics=None,
+        rtt=0,
+        steps=0,
+        road_preview=None,
+        driving=None,
     ):
         if self.closed:
             raise ViewerClosed("用户关闭可视化窗口，已停止本次仿真")
@@ -85,6 +95,12 @@ class LiveView:
             )
             if road_preview is not None:
                 text += f"\n前/后轴预瞄路高 {road_preview[0] * 1000:6.1f} / {road_preview[2] * 1000:6.1f} mm（相对初始平面）"
+            if driving is not None:
+                text += (
+                    f"\nPID 目标车速 {driving['target_speed_mps'] * 3.6:5.1f} km/h"
+                    f"  方向盘 {driving['carsim_inputs'][0]:6.1f}°"
+                    f"  油门/制动 {driving['throttle']:.2f}/{driving['brake']:.2f}"
+                )
             self.metrics.set(text)
             self.history.append(
                 (
@@ -101,6 +117,30 @@ class LiveView:
         self.root.update()
         if self.closed:
             raise ViewerClosed("用户关闭可视化窗口，已停止本次仿真")
+
+    def wait_for_planner(self, function):
+        """Keep the window responsive while an offline inference pauses the clock."""
+        result, errors = [], []
+
+        def work():
+            try:
+                result.append(function())
+            except Exception as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        self.status.set("Orin 模型推理中 · 仿真时钟暂停 · 可关闭窗口停止")
+        while worker.is_alive():
+            if self.closed:
+                raise ViewerClosed("用户关闭可视化窗口，已停止本次仿真")
+            self.root.update()
+            time.sleep(0.02)
+        if self.closed:
+            raise ViewerClosed("用户关闭可视化窗口，已停止本次仿真")
+        if errors:
+            raise errors[0]
+        return result[0]
 
     def draw_plot(self):
         self.plot.delete("all")

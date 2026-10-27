@@ -13,7 +13,8 @@ from .paths import DATABASE, ROOT
 class CarSim:
     """One DLL owner; keep original 8 imports / 77 exports and append 4 pose exports."""
 
-    def __init__(self, output, terrain=None, contact=False):
+    def __init__(self, output, terrain=None, contact=False, driving=False):
+        output = output.resolve()
         text = (ROOT / "results/orin/runtime_run.par").read_text(encoding="utf-8")
         if terrain is not None:
             road = re.search(
@@ -29,13 +30,28 @@ class CarSim:
             if path is None:
                 raise RuntimeError("Missing independent driver path")
             text = text[: road.start()] + path.group() + text[road.end() :]
-        self.n_import = 9 if contact else 8
-        if contact:
-            text = re.sub(r"(?m)^PORTS_IMP\s+1,8\s*$", "PORTS_IMP 1,9", text)
-            text = re.sub(r"(?m)^END\s*$", "IMPORT IMP_FX_AERO Add 0.0\nEND", text)
-        text = re.sub(r"(?m)^PORTS_EXP\s+1,77\s*$", "PORTS_EXP 1,81", text)
+        self.contact = contact
+        self.driving = driving
+        extra_imports = ["IMPORT IMP_FX_AERO Add 0.0"] if contact else []
+        if driving:
+            # Units verified in vehicle_imp.txt generated from this solver/model:
+            # steering-wheel degrees, normalized throttle, four actuator pressures MPa.
+            extra_imports += [
+                "IMPORT IMP_STEER_SW Replace 0.0",
+                "IMPORT IMP_THROTTLE_ENGINE Replace 0.0",
+            ] + ["IMPORT IMP_PBK_" + wheel + " Replace 0.0" for wheel in ("L1", "L2", "R1", "R2")]
+        self.n_import = 8 + len(extra_imports)
+        if extra_imports:
+            text = re.sub(r"(?m)^PORTS_IMP\s+1,8\s*$", f"PORTS_IMP 1,{self.n_import}", text)
+            text = re.sub(r"(?m)^END\s*$", "\n".join(extra_imports) + "\nEND", text)
+        self.n_export = 82 if driving else 81
+        text = re.sub(r"(?m)^PORTS_EXP\s+1,77\s*$", f"PORTS_EXP 1,{self.n_export}", text)
         text = re.sub(
-            r"(?m)^END\s*$", "EXPORT Xcg_TM\nEXPORT Ycg_TM\nEXPORT Yaw\nEXPORT Roll\nEND", text
+            r"(?m)^END\s*$",
+            "EXPORT Xcg_TM\nEXPORT Ycg_TM\nEXPORT Yaw\nEXPORT Roll\n"
+            + ("EXPORT Vy_SM\n" if driving else "")
+            + "END",
+            text,
         )
         par = output / "runtime.par"
         par.write_text(text, encoding="utf-8")
@@ -46,7 +62,7 @@ class CarSim:
             f"SIMFILE\nINPUT {par}\nECHO {prefix}_echo.par\nLOGFILE {prefix}_log.txt\n"
             f"FINAL {prefix}_end.par\nERDFILE {prefix}.vs\nPROGDIR E:/Carsim2020.0_Prog/\n"
             f"DATADIR {DATABASE}/\nVEHICLE_CODE i_i\nEXT_MODEL_STEP 0.001\n"
-            f"PORTS_IMP 1,{self.n_import}\nPORTS_EXP 1,81\nDLLFILE {dll}\nEND\n",
+            f"PORTS_IMP 1,{self.n_import}\nPORTS_EXP 1,{self.n_export}\nDLLFILE {dll}\nEND\n",
             encoding="utf-8",
         )
         self.dll = ct.CDLL(dll)
@@ -87,10 +103,10 @@ class CarSim:
             os.chdir(old)
         self.t = start.value
         self.check()
-        if (ni.value, ne.value) != (self.n_import, 81) or abs(dt.value - 0.001) > 1e-10:
+        if (ni.value, ne.value) != (self.n_import, self.n_export) or abs(dt.value - 0.001) > 1e-10:
             self.close()
             raise RuntimeError(f"Unexpected CarSim I/O or step: {(ni.value, ne.value, dt.value)}")
-        self.values = (ct.c_double * 81)()
+        self.values = (ct.c_double * self.n_export)()
         self.dll.vs_copy_export_vars(self.values)
         self.t = start.value
         self.initial = list(self.values)
@@ -106,8 +122,30 @@ class CarSim:
         if self.dll.vs_error_occurred():
             raise RuntimeError(self.dll.vs_get_error_message().decode(errors="replace"))
 
-    def step(self, forces, contact_force=0):
-        values = list(forces) + ([contact_force] if self.n_import == 9 else [])
+    def step(self, forces, contact_force=0, driving_inputs=None):
+        """Advance 10 ms; optional drive inputs are (steering wheel deg, throttle, MPa).
+
+        This low-level boundary deliberately takes solver units. Road-wheel angle
+        conversion belongs to a calibrated vehicle adapter, not this DLL wrapper.
+        """
+        values = list(forces)
+        if len(values) != 8 or not all(math.isfinite(v) for v in values):
+            raise ValueError("Expected eight finite suspension inputs")
+        if self.contact:
+            if not math.isfinite(contact_force):
+                raise ValueError("Nonfinite contact force")
+            values.append(contact_force)
+        if self.driving:
+            if driving_inputs is None or len(driving_inputs) != 3:
+                raise ValueError("Driving mode requires (steering wheel deg, throttle, brake MPa)")
+            steer, throttle, brake = driving_inputs
+            if not all(math.isfinite(v) for v in driving_inputs):
+                raise ValueError("Nonfinite driving inputs")
+            if abs(steer) > 540 or not 0 <= throttle <= 1 or not 0 <= brake <= 15:
+                raise ValueError("Driving inputs exceed integration limits")
+            values.extend([steer, throttle, brake, brake, brake, brake])
+        elif driving_inputs is not None:
+            raise ValueError("Driving inputs supplied to a suspension-only run")
         inputs = (ct.c_double * self.n_import)(*values)
         for _ in range(10):
             self.t += 0.001

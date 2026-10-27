@@ -3,12 +3,17 @@ param(
     [int]$SpawnIndex = 159,
     [string]$OrinHost = "192.168.50.2",
     [ValidateSet("town", "wave", "bump", "pothole", "combined")][string]$RoadProfile = "town",
+    [ValidateSet("", "qwen", "tcp", "transfuser")][string]$Planner = "",
+    [ValidateRange(-0.01, 0.01)][double]$RoadCurvature = 0,
+    [ValidateSet("straight", "left", "right")][string]$NavCommand = "straight",
     [switch]$NoVisualize,
     [switch]$Compare,
     [switch]$CheckOnly
 )
 
 $ErrorActionPreference = "Stop"
+if ($Planner -and $Compare) { throw "Driving model comparison is not implemented in the two-car viewer yet." }
+if ($RoadCurvature -ne 0 -and (-not $Planner -or $Compare)) { throw "Curved road requires a driving planner in single-car mode." }
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $carlaExe = "E:/Desktop/workspace/CARLA_0.9.11/WindowsNoEditor/CarlaUE4.exe"
 $condaCommand = Get-Command conda -ErrorAction Stop
@@ -19,7 +24,7 @@ $dependencyCheck = "import numpy; print('NumPy import OK')"
 if (-not $NoVisualize) {
     $dependencyCheck += "; from PIL import Image,ImageTk; import tkinter; root=tkinter.Tk(); root.withdraw(); image=ImageTk.PhotoImage(Image.new('RGB',(8,8))); root.update(); root.destroy(); print('Pillow and Tk rendering OK')"
 }
-if ($Compare -and $NoVisualize) { $dependencyCheck += "; from PIL import Image; print('Pillow import OK')" }
+if (($Compare -or $Planner) -and $NoVisualize) { $dependencyCheck += "; from PIL import Image; print('Pillow import OK')" }
 & $condaCommand run --no-capture-output -n carla0911 python -c $dependencyCheck
 if ($LASTEXITCODE -ne 0) {
     throw "carla0911 dependency check failed. See orin/ENVIRONMENT_LOOP.md for the pinned environment and Pillow DLL repair."
@@ -43,6 +48,9 @@ function Test-TcpEndpoint([string]$Address, [int]$Port) {
 if (-not (Test-TcpEndpoint $OrinHost 55002)) {
     throw "Orin controller is unavailable at ${OrinHost}:55002. Check direct Ethernet and suspension-environment.service."
 }
+if ($Planner -and -not (Test-TcpEndpoint $OrinHost 55003)) {
+    throw "Orin driving planner is unavailable at ${OrinHost}:55003. Run deploy_driving_orin.py --planner $Planner first."
+}
 if (-not (Test-TcpEndpoint "127.0.0.1" 2000)) {
     if (-not (Test-Path -LiteralPath $carlaExe)) { throw "CARLA executable not found: $carlaExe" }
     Start-Process -FilePath $carlaExe -WorkingDirectory (Split-Path $carlaExe) -WindowStyle Hidden -ArgumentList @(
@@ -62,6 +70,8 @@ $runArguments = @(
     "--spawn", $SpawnIndex, "--orin-host", $OrinHost, "--road-profile", $RoadProfile
 )
 if (-not $NoVisualize) { $runArguments += "--visualize" }
+if ($Planner) { $runArguments += @("--planner", $Planner, "--nav-command", $NavCommand) }
+if ($RoadCurvature -ne 0) { $runArguments += @("--road-curvature", $RoadCurvature.ToString([cultureinfo]::InvariantCulture)) }
 if ($Compare) {
     if ($RoadProfile -eq "town") { $RoadProfile = "combined" }
     $runArguments = @(

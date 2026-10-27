@@ -39,6 +39,29 @@ def image_at(images, frame):
             raise RuntimeError("Camera/frame synchronization failed")
 
 
+def spawn_driving_lidar(world, carla, vehicle):
+    """Full 360-degree frame at 20 Hz; CVPR2021 sensor pose, density recorded by caller."""
+    blueprint = world.get_blueprint_library().find("sensor.lidar.ray_cast")
+    for key, value in dict(
+        channels=64,
+        points_per_second=600000,
+        rotation_frequency=20,
+        range=85,
+        upper_fov=10,
+        lower_fov=-30,
+        sensor_tick=0.0,
+    ).items():
+        blueprint.set_attribute(key, str(value))
+    sensor = world.spawn_actor(
+        blueprint,
+        carla.Transform(carla.Location(x=1.3, z=2.5), carla.Rotation(yaw=-90)),
+        attach_to=vehicle,
+    )
+    frames = queue.Queue()
+    sensor.listen(frames.put)
+    return sensor, frames
+
+
 def pack_vision(depth, semantic, terrain, sim_time):
     if depth.frame != semantic.frame:
         raise RuntimeError("Depth/semantic camera frames are not paired")
