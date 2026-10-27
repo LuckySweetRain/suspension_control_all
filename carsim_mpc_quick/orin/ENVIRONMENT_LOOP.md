@@ -43,11 +43,18 @@ Orin 新服务为 `suspension-environment.service`，监听 55002；旧 55001 �
 `deploy_orin.py` 已包含新服务和代码的可重复部署，不在配置中保存密码。
 
 ```powershell
+# 一键检查直连与服务，必要时启动 CARLA，显示相机与控制曲线。
+# 默认 Town03 的 159 号起点、10 s 仿真时间；完成后保留窗口，关闭窗口即可退出。
+./carsim_mpc_quick/orin/start_environment_loop.ps1
+
+# 不显示窗口，用于批量复核；仍然使用 CARLA 真实相机图像。
+./carsim_mpc_quick/orin/start_environment_loop.ps1 -NoVisualize
+
 # 无障碍物的短坡道验证；显示真实画面、控制力和加速度
 conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/run_environment_loop.py --seconds 0.5 --spawn 53 --visualize
 
 # 正向静态障碍物接触反馈原型：前方 6 m 放置 streetbarrier
-conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/run_environment_loop.py --seconds 1.2 --obstacle-at 6
+conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/run_environment_loop.py --seconds 1.2 --spawn 0 --obstacle-at 6
 ```
 
 当前拒绝已有其他车辆的世界，防止更改别人的仿真，同时限制了多车辆验证。
@@ -58,6 +65,38 @@ conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/run_envi
 所有工件进入 `results/carla_environment/<时间>/`，包含逐步状态、指令、相机帧号、MPC 预瞄、
 接触反力、首帧原始深度/语义图及校准包，失败记录也保留。当前是离线同步联合仿真，不保证
 10 ms 墙钟实时。`passed` 仅表示该次脚本的数值与接口检查通过，不表示全面物理验收。
+
+默认路段经过 10 s 验证，不能把默认时长任意延长理解为已验收长路线。159 号起点在 10.22 s
+附近会遇到未分类的静态几何，程序保留拒绝记录并中止。已在无车辆情况下复查射线命中，确认
+该命中仍存在于场景中；没有把它直接当作自车误检而过滤掉。其他路段也可能遇到这类几何。
+
+`report.json` 现在记录各阶段耗时的 p50/p95/p99/max 和超过 10 ms 的比例：
+`rpc_ms` 包含 Orin 的感知、控制、序列化与传输，不能称为纯网络 RTT；`solver_ms` 包含
+CarSim 积分及地形查询；`cycle_ms` 还包含接触查询和对应步的相机采集、显示处理。
+失败也记录已完成步数、时间和拒绝接触的射线坐标，并保存最后一张 `failure.png`。
+
+## 本轮持续运行与接口验证（2026-10-27）
+
+| 验证 | 结果 |
+|---|---|
+| 原生插件与 VS Connect 探测 | `results/carla_native_probe/20261027_184850/report.json`：插件车辆可移动，启用前后进程均无 UDP 监听；没有验证 VS Connect 握手或悬架变量。继续采用 VS API 主控链路 |
+| 10 s 完整地形/图像/Orin 闭环 | `20261027_185112`、优化后 `20261027_185722`、可视化 `20261027_185843` 均通过；每次 1000 步、200 次图像更新、170030 次地形回调 |
+| 优化后的正面障碍物 | `20261027_185828`：120 步，0.34 s 接触，最终约 0.194 km/h |
+| 预瞄计算优化 | 排序分组中位数、相同点集复用；新图像和横向选点变化均使缓存失效。Orin 上 8 组对照与旧实现误差不超过 1e-12；8 万点重复预瞄中位耗时约 6.22→1.12 ms，新图像后的首次聚合约 5.24 ms。数据见 `results/carla_carsim_research_20261027/depth_aggregation_benchmark.json` |
+| 数值兼容性 | 深度通道乘法前转换浮点，修复 NumPy 2 的 uint8 溢出异常；Orin NumPy 1.26 下与旧解码和预瞄对照通过 |
+| 图像输入依赖与过期拒绝 | `20261027_185722/input_dependency_check.json`：同状态下真实图像与零预瞄角点力差约 157.55 N；拒绝过期图像，不调用静态路面 |
+| 新路段图像几何抽查 | `20261027_185722/camera_geometry_check.json`：20 点，最大约 17.32 mm、平均 8.19 mm。最大误差超过当前 15 mm 观测区工程设定，后者不能视为已验证的鲁棒误差上界 |
+| 控制器与主项目回归 | Orin 80 步 MATLAB 对照最大力误差约 7.96e-13 N；`scripts/check_project.py` 七组通过，报告 `results/project_checks/20261027_185323_087121/report.json` |
+
+可视化 10 s 工况的 Orin 计算 p50 约 7.95 ms、p95 约 44.75 ms；完整控制周期 p50 约
+21.32 ms、p95 约 55.85 ms。优化改善了重复预瞄与中位耗时，仍未解决图像更新峰值，也未达到
+100 Hz 墙钟实时。图像掩码仍为仿真真值，完整碰撞仍按下节列为未完成项。
+
+原生接口探测可重复运行（需当前世界没有其他车辆）：
+
+```powershell
+conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/probe_native_interface.py
+```
 
 ## 已执行的验证（2026-10-27）
 

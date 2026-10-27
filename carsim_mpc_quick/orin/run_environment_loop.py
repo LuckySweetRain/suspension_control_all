@@ -19,6 +19,23 @@ from carla_stack import CARLA_ROOT, ROOT, CarSim, image_at
 from carla_terrain import CarlaTerrain
 
 
+def timing_summary(trace):
+    """Wall-clock measurements; RPC includes remote processing, not pure network RTT."""
+    summary = {}
+    for key in ("rpc_ms", "solver_ms", "elapsed_ms", "cycle_ms", "orin_compute_ms"):
+        samples = np.asarray([row[key] for row in trace if key in row], dtype=float)
+        if samples.size:
+            summary[key] = dict(
+                count=int(samples.size),
+                p50=float(np.percentile(samples, 50)),
+                p95=float(np.percentile(samples, 95)),
+                p99=float(np.percentile(samples, 99)),
+                max=float(np.max(samples)),
+                over_10ms_fraction=float(np.mean(samples > 10)),
+            )
+    return summary
+
+
 def pack_vision(depth, semantic, terrain, sim_time):
     if depth.frame != semantic.frame:
         raise RuntimeError("Depth/semantic camera frames are not paired")
@@ -56,10 +73,20 @@ def run(args):
     world = client.get_world()
     if list(world.get_actors().filter("vehicle.*")):
         raise RuntimeError("Another vehicle simulation is running")
+    if args.spawn is None:
+        if world.get_map().name.split("/")[-1] != "Town03":
+            raise RuntimeError(
+                "Default validation route requires Town03; specify --spawn for another map"
+            )
+        args.spawn = 159
+    if args.spawn >= len(world.get_map().get_spawn_points()):
+        raise ValueError("Spawn index is outside this map")
     original = world.get_settings()
     settings = world.get_settings()
     settings.synchronous_mode, settings.fixed_delta_seconds = True, 0.05
-    actors, solver, connection, viewer = [], None, None, None
+    actors, solver, connection, viewer, contact = [], None, None, None, None
+    incoming = None
+    wall_start = time.perf_counter()
     trace, vision_audit = [], []
     report = dict(
         passed=False,
@@ -67,6 +94,13 @@ def run(args):
         preview_source="Orin depth image reconstruction",
         semantic_mask="CARLA ground truth, not a trained RGB model",
         contact_model="frontal compliant geometry contact, not PhysX",
+        spawn_index=args.spawn,
+        requested_sim_seconds=args.seconds,
+        execution_mode="offline_synchronous",
+        integration_dt_s=0.001,
+        control_dt_s=0.01,
+        camera_dt_s=0.05,
+        map=world.get_map().name,
     )
     try:
         world.apply_settings(settings)
@@ -152,6 +186,7 @@ def run(args):
         vision = pack_vision(images["depth"], images["semantic"], terrain, 0)
         (output / "first_vision_packet.json").write_text(json.dumps(vision))
         for seq in range(round(args.seconds / 0.01)):
+            cycle_start = time.perf_counter()
             fx, collision = contact.force(values, seq * 0.01)
             request = dict(
                 version=2,
@@ -164,11 +199,13 @@ def run(args):
             start = time.perf_counter()
             connection.sendall((json.dumps(request, allow_nan=False) + "\n").encode())
             line = incoming.readline(32769)
-            if not line.endswith(b"\n"):
+            rpc_ms = (time.perf_counter() - start) * 1000
+            if len(line) > 32768 or not line.endswith(b"\n"):
                 raise RuntimeError("Orin environment stream disconnected")
             reply = json.loads(line)
             if (
-                reply["seq"] != seq
+                reply["version"] != 2
+                or reply["seq"] != seq
                 or reply["sha256"] != digest
                 or reply["preview_source"] != "depth_image"
                 or reply["fallback"]
@@ -178,7 +215,9 @@ def run(args):
             forces = reply["forces"]
             if len(forces) != 8 or not all(math.isfinite(f) and abs(f) <= 5000 for f in forces):
                 raise RuntimeError("Invalid actuator force")
+            solver_start = time.perf_counter()
             values = solver.step(forces, fx)
+            solver_ms = (time.perf_counter() - solver_start) * 1000
             elapsed = (time.perf_counter() - start) * 1000
             trace.append(
                 dict(
@@ -188,6 +227,9 @@ def run(args):
                     contact=collision,
                     reply=reply,
                     elapsed_ms=elapsed,
+                    rpc_ms=rpc_ms,
+                    solver_ms=solver_ms,
+                    orin_compute_ms=reply["compute_ms"],
                 )
             )
             vision = None
@@ -219,6 +261,7 @@ def run(args):
                     viewer.show(
                         images["rgb"], solver.t, values, reply["diagnostics"], elapsed, seq + 1
                     )
+            trace[-1]["cycle_ms"] = (time.perf_counter() - cycle_start) * 1000
         images["rgb"].save_to_disk(str(output / "last.png"))
         report.update(
             passed=True,
@@ -235,8 +278,12 @@ def run(args):
         )
     except Exception as error:
         report["error"] = str(error)
+        if "images" in locals():
+            images["rgb"].save_to_disk(str(output / "failure.png"))
         raise
     finally:
+        if incoming is not None:
+            incoming.close()
         if connection is not None:
             connection.close()
         if solver is not None:
@@ -246,27 +293,36 @@ def run(args):
                 actor.stop()
             actor.destroy()
         world.apply_settings(original)
+        report.update(
+            completed_steps=len(trace),
+            completed_sim_seconds=trace[-1]["time"] if trace else 0,
+            wall_seconds=time.perf_counter() - wall_start,
+            timing=timing_summary(trace),
+            rejected_contact=contact.rejected_contact if contact is not None else None,
+        )
         (output / "trace.json").write_text(json.dumps(trace, allow_nan=False))
         (output / "vision_frames.json").write_text(json.dumps(vision_audit))
         (output / "report.json").write_text(json.dumps(report, indent=2))
         print(json.dumps(report, indent=2))
         print("Artifacts:", output)
     if viewer is not None:
-        viewer.finish("CARLA 地形 + 深度预瞄闭环完成；碰撞为正向柔顺接触原型")
+        viewer.finish("离线同步闭环完成；碰撞为正向柔顺接触原型，尚未保证 10 ms 实时")
         viewer.wait()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seconds", type=float, default=1)
-    parser.add_argument("--spawn", type=int, default=0)
+    parser.add_argument("--seconds", type=float, default=10)
+    parser.add_argument(
+        "--spawn", type=int, default=None, help="默认使用 Town03 已验证的 159 号起点"
+    )
     parser.add_argument("--orin-host", default="192.168.50.2")
     parser.add_argument("--obstacle-at", type=float)
     parser.add_argument("--visualize", action="store_true")
     arguments = parser.parse_args()
     if not math.isfinite(arguments.seconds) or not 0.05 <= arguments.seconds <= 30:
         parser.error("seconds must be between 0.05 and 30")
-    if arguments.spawn < 0:
+    if arguments.spawn is not None and arguments.spawn < 0:
         parser.error("spawn must be nonnegative")
     if arguments.obstacle_at is not None and (
         not math.isfinite(arguments.obstacle_at) or arguments.obstacle_at <= 3

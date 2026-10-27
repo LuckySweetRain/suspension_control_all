@@ -17,6 +17,7 @@ class FrontalContact:
         self.stop_x = None
         self.events = []
         self.max_force = 0
+        self.rejected_contact = None
 
     def force(self, values, now):
         x, y = values[77], values[78]
@@ -50,6 +51,20 @@ class FrontalContact:
                 ]
                 if hits:
                     if str(hits[0].label).upper() == "NONE":
+                        self.rejected_contact = dict(
+                            time=now,
+                            car_sim_cg=list(values[77:81]),
+                            ray_start=[start.x, start.y, start.z],
+                            ray_end=[end.x, end.y, end.z],
+                            hits=[
+                                dict(
+                                    label=str(hit.label),
+                                    position=[hit.location.x, hit.location.y, hit.location.z],
+                                    distance_m=start.distance(hit.location),
+                                )
+                                for hit in hits
+                            ],
+                        )
                         raise RuntimeError(
                             "Unclassified CARLA contact geometry; native collision coupling is required"
                         )

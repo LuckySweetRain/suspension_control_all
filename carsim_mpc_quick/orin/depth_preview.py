@@ -20,6 +20,7 @@ class DepthPreview:
         self.valid_points = 0
         self.reference_plane = None
         self.initial_cg = None
+        self.profile_cache = None
 
     def observe(self, packet):
         width, height = int(packet["width"]), int(packet["height"])
@@ -35,7 +36,8 @@ class DepthPreview:
                 raise ValueError("Invalid compressed camera frame")
             arrays.append(np.frombuffer(raw, np.uint8).reshape(height, width, 4))
         depth, semantic = arrays
-        d = (depth[:, :, 2].astype(float) + 256 * depth[:, :, 1] + 65536 * depth[:, :, 0]) * (
+        channels = depth[:, :, :3].astype(float)
+        d = (channels[:, :, 2] + 256 * channels[:, :, 1] + 65536 * channels[:, :, 0]) * (
             1000 / 16777215
         )
         vv, uu = np.indices(d.shape)
@@ -76,21 +78,34 @@ class DepthPreview:
         ][-80000:]
         self.frame, self.observed_time = int(packet["frame"]), float(packet["sim_time"])
         self.valid_points = len(cloud)
+        self.profile_cache = None
 
     def preview(self, y, cfg, now):
         if self.observed_time is None or not -1e-6 <= now - self.observed_time <= 0.15:
             raise ValueError("Missing or stale camera preview; no static-road fallback")
         y = np.asarray(y, dtype=float)[-39:]
-        points = self.points[np.abs(self.points[:, 1] - np.mean(y[34:38])) < 1.2]
+        mask = np.abs(self.points[:, 1] - np.mean(y[34:38])) < 1.2
+        points = self.points[mask]
         if len(points) < 50:
             raise ValueError("Insufficient road-image coverage along the current track")
-        bins = np.round(points[:, 0] / 0.05).astype(int)
-        stations = np.unique(bins)
-        residual_height = points[:, 2] - (
-            self.reference_plane[0] + points[:, :2] @ self.reference_plane[1:]
-        )
-        heights = np.array([np.median(residual_height[bins == k]) for k in stations])
-        stations = stations * 0.05
+        if self.profile_cache is not None and np.array_equal(mask, self.profile_cache[0]):
+            _, stations, heights = self.profile_cache
+        else:
+            bins = np.round(points[:, 0] / 0.05).astype(int)
+            residual_height = points[:, 2] - (
+                self.reference_plane[0] + points[:, :2] @ self.reference_plane[1:]
+            )
+            # Sort once, rather than scanning the historical cloud for every bin.
+            order = np.argsort(bins)
+            sorted_bins = bins[order]
+            boundaries = np.flatnonzero(np.diff(sorted_bins)) + 1
+            heights = np.array(
+                [np.median(group) for group in np.split(residual_height[order], boundaries)]
+            )
+            stations = sorted_bins[np.r_[0, boundaries]] * 0.05
+            # Reuse only when the actual selected points are identical. New frames
+            # invalidate this cache; lateral track changes are checked every step.
+            self.profile_cache = (mask, stations, heights)
         v = max(abs(y[38]) / 3.6, cfg["preview"]["minimum_speed_mps"])
         n, dt = int(cfg["horizon"]), cfg["control_dt"]
         distances = np.arange(n + 1) * v * dt
