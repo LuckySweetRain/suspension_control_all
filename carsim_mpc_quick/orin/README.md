@@ -1,5 +1,7 @@
 # Orin 控制器与 CarSim 联合仿真
 
+CARLA 场景、相机和三端基础闭环的启动与测试见 [CARLA_README.md](CARLA_README.md)。
+
 本配置让 Windows 上的 CarSim 作为被控对象，Jetson Orin 执行现有预瞄 QP-MPC。
 控制律、矩阵、预瞄与单位取自 `quick_mpc_config.m` 和 `build_quick_mpc_data.m`。
 当前支持 `ideal_force` 主动轴力模式；不支持直接切换 CDC、持续作动力或 RL 权重。

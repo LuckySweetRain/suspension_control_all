@@ -1,0 +1,9 @@
+name: carla0911
+channels:
+  - conda-forge
+dependencies:
+  # Isolated legacy frontend: matches the installed CARLA 0.9.11 cp37 egg.
+  - python=3.7
+  - numpy=1.21
+  - pillow=9.2
+  - setuptools<70
