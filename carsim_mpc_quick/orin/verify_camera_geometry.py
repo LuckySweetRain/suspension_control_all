@@ -29,18 +29,23 @@ def verify(folder):
     client.set_timeout(20)
     world = client.get_world()
     errors = []
+    signed_errors = []
     for x, y, z, _ in world_points:
         hits = world.cast_ray(carla.Location(x=x, y=y, z=z + 1), carla.Location(x=x, y=y, z=z - 2))
         heights = [h.location.z for h in hits if str(h.label) in ("Roads", "RoadLines")]
         if not heights:
             raise RuntimeError("No corresponding CARLA road geometry")
-        errors.append(min(abs(z - height) for height in heights))
+        signed = z - min(heights, key=lambda height: abs(z - height))
+        signed_errors.append(signed)
+        errors.append(abs(signed))
     report = dict(
         samples=len(errors),
         max_height_error_m=max(errors),
         mean_height_error_m=float(np.mean(errors)),
+        mean_signed_height_error_m=float(np.mean(signed_errors)),
     )
-    assert report["max_height_error_m"] < 0.03, report
+    # A centimetre tolerance previously hid the missing half-pixel centre offset.
+    assert report["max_height_error_m"] < 0.002, report
     (folder / "camera_geometry_check.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
 

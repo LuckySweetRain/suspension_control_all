@@ -78,7 +78,7 @@ class LiveView:
             acceleration = values[40] * 9.80665
             self.metrics.set(
                 f"仿真时间 {sim_time:6.2f} s     车速 {values[76]:6.2f} km/h     控制次数 {steps}\n"
-                f"前轴力 {front:8.1f} N     后轴力 {rear:8.1f} N     Orin 往返 {rtt:6.2f} ms\n"
+                f"前轴主动力 {front:8.1f} N     后轴主动力 {rear:8.1f} N     Orin 请求 {rtt:6.2f} ms\n"
                 f"车身垂向加速度 {acceleration:7.3f} m/s²     俯仰角 {values[41]:7.3f} deg"
             )
             self.history.append((sim_time, front, rear, acceleration))

@@ -184,6 +184,12 @@ def run(args):
         digest = hashlib.sha256((ROOT / "results/orin/quick_mpc_data.mat").read_bytes()).hexdigest()
         values = solver.initial
         vision = pack_vision(images["depth"], images["semantic"], terrain, 0)
+        # One-time equilibrium calibration, not future road preview. The dynamics
+        # contact surface defines where the relative CarSim state was initialized.
+        initial_heights = [terrain.height(values[i], values[i + 4]) for i in range(68, 72)]
+        initial_road = [float(np.mean(initial_heights[::2])), float(np.mean(initial_heights[1::2]))]
+        vision["initial_road_heights_m"] = initial_road
+        report["initial_road_heights_m"] = initial_road
         (output / "first_vision_packet.json").write_text(json.dumps(vision))
         for seq in range(round(args.seconds / 0.01)):
             cycle_start = time.perf_counter()
@@ -259,7 +265,7 @@ def run(args):
                 )
                 if viewer is not None:
                     viewer.show(
-                        images["rgb"], solver.t, values, reply["diagnostics"], elapsed, seq + 1
+                        images["rgb"], solver.t, values, reply["diagnostics"], rpc_ms, seq + 1
                     )
             trace[-1]["cycle_ms"] = (time.perf_counter() - cycle_start) * 1000
         images["rgb"].save_to_disk(str(output / "last.png"))
@@ -275,6 +281,12 @@ def run(args):
             max_contact_force_N=contact.max_force,
             final_speed_kph=values[76],
             max_normalized_qp_violation=max(t["reply"]["diagnostics"][3] for t in trace),
+            negative_saturation_fraction=np.mean(
+                np.array([t["reply"]["diagnostics"][:2] for t in trace]) <= -1999, axis=0
+            ).tolist(),
+            positive_saturation_fraction=np.mean(
+                np.array([t["reply"]["diagnostics"][:2] for t in trace]) >= 1999, axis=0
+            ).tolist(),
         )
     except Exception as error:
         report["error"] = str(error)

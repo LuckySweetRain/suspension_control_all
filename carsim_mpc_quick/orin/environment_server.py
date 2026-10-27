@@ -49,8 +49,9 @@ def serve():
                                 vision.observe(request["vision"])
                             preview = vision.preview(request["exports"], controller.c, now)
                             contact = bool(request.get("contact", {}).get("active", False))
+                            preview_warmup = min(vision.coverage_fractions) < 1.0
                             force, diag, fallback = controller.step(
-                                request["exports"], preview, contact
+                                request["exports"], preview, contact or preview_warmup
                             )
                             reply = dict(
                                 version=2,
@@ -64,6 +65,10 @@ def serve():
                                 valid_road_pixels=vision.valid_points,
                                 image_preview_w=preview[0].tolist(),
                                 image_reference_plane=vision.reference_plane.tolist(),
+                                image_state_correction=preview[3].tolist(),
+                                initial_road_heights_m=vision.initial_road.tolist(),
+                                image_axle_coverage=vision.coverage_fractions,
+                                preview_warmup=preview_warmup,
                                 contact_supervisor=contact,
                                 compute_ms=(time.perf_counter() - begin) * 1000,
                             )

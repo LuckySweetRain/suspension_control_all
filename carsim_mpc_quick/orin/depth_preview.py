@@ -19,10 +19,17 @@ class DepthPreview:
         self.points = np.empty((0, 3))
         self.valid_points = 0
         self.reference_plane = None
-        self.initial_cg = None
+        self.initial_road = None
+        self.previous_reference = None
         self.profile_cache = None
+        self.coverage_fractions = [0.0, 0.0]
 
     def observe(self, packet):
+        if self.initial_road is None:
+            calibration = np.asarray(packet.get("initial_road_heights_m"), dtype=float)
+            if calibration.shape != (2,) or not np.all(np.isfinite(calibration)):
+                raise ValueError("Initial axle road-height calibration is required")
+            self.initial_road = calibration
         width, height = int(packet["width"]), int(packet["height"])
         if not (32 <= width <= 640 and 32 <= height <= 480):
             raise ValueError("Unsupported camera dimensions")
@@ -47,8 +54,8 @@ class DepthPreview:
         local = np.column_stack(
             (
                 d[mask],
-                (uu[mask] - width / 2) * d[mask] / focal,
-                -(vv[mask] - height / 2) * d[mask] / focal,
+                (uu[mask] + 0.5 - width / 2) * d[mask] / focal,
+                -(vv[mask] + 0.5 - height / 2) * d[mask] / focal,
                 np.ones(np.count_nonzero(mask)),
             )
         )
@@ -74,8 +81,16 @@ class DepthPreview:
         # Retain a bounded local history to cover the road now occluded beneath the car.
         center = float(transform[0, 3])
         self.points = self.points[
-            (self.points[:, 0] > center - 8) & (self.points[:, 0] < center + 20)
-        ][-80000:]
+            (self.points[:, 0] > center - 8)
+            & (self.points[:, 0] < center + 20)
+            & (np.abs(self.points[:, 1] - transform[1, 3]) < 8)
+        ]
+        # Keep spatial coverage, not the last N pixels. Repeated near-field
+        # pixels otherwise evict a road patch before the rear axle reaches it.
+        # Retain the newest observation in each 5 cm x 10 cm ground cell.
+        cells = np.floor(self.points[:, :2] / [0.05, 0.1]).astype(np.int64)
+        _, latest = np.unique(cells[::-1], axis=0, return_index=True)
+        self.points = self.points[len(self.points) - 1 - latest]
         self.frame, self.observed_time = int(packet["frame"]), float(packet["sim_time"])
         self.valid_points = len(cloud)
         self.profile_cache = None
@@ -116,20 +131,48 @@ class DepthPreview:
         )
         w = np.column_stack((zf[:-1], np.diff(zf) / dt, zr[:-1], np.diff(zr) / dt)).ravel()
         # Extrapolated/occluded near field is explicitly assigned larger uncertainty.
-        observed = (xf + distances[:-1] >= stations[0]) & (xf + distances[:-1] <= stations[-1])
-        hb = np.where(observed, 0.015, 0.030)
-        bound = np.column_stack((hb, np.full(n, 0.03 * v), hb, np.full(n, 0.03 * v))).ravel()
+        observed_f = (xf + distances[:-1] >= stations[0]) & (xf + distances[:-1] <= stations[-1])
+        observed_r = (xr + distances[:-1] >= stations[0]) & (xr + distances[:-1] <= stations[-1])
+        self.coverage_fractions = [float(np.mean(observed_f)), float(np.mean(observed_r))]
+        hb_f, hb_r = np.where(observed_f, 0.015, 0.030), np.where(observed_r, 0.015, 0.030)
+        bound = np.column_stack((hb_f, np.full(n, 0.03 * v), hb_r, np.full(n, 0.03 * v))).ravel()
         if not np.all(np.isfinite(w)):
             raise ValueError("Nonfinite image preview")
-        cg = (xf - cfg["vehicle"]["a"] + xr + cfg["vehicle"]["b"]) / 2
-        if self.initial_cg is None:
-            self.initial_cg = cg
-        dz = self.reference_plane[1] * (cg - self.initial_cg)
-        velocity = self.reference_plane[1] * y[38] / 3.6
-        offset = np.array([dz, velocity, 0, 0, dz, velocity, dz, velocity])
+        yf, yr = np.mean(y[[34, 36]]), np.mean(y[[35, 37]])
+        plane_at_axles = (
+            self.reference_plane[0] + np.array([[xf, yf], [xr, yr]]) @ self.reference_plane[1:]
+        )
+        axle_shift = plane_at_axles - self.initial_road
+        # State displacements start at each axle's initialized equilibrium, while
+        # the camera road is absolute elevation minus an affine reference plane.
+        # Transform BOTH axle heights, body heave and pitch into that same frame.
+        # This preserves suspension travel and physical tyre deflection exactly.
+        axle_velocity = np.full(2, self.reference_plane[1] * y[38] / 3.6)
+        if self.previous_reference is not None:
+            previous_time, previous_plane = self.previous_reference
+            if now > previous_time:
+                axle_velocity = (plane_at_axles - previous_plane) / (now - previous_time)
+        self.previous_reference = (now, plane_at_axles)
+        a, b = cfg["vehicle"]["a"], cfg["vehicle"]["b"]
+        dz = (b * axle_shift[0] + a * axle_shift[1]) / (a + b)
+        pitch = (axle_shift[0] - axle_shift[1]) / (a + b)
+        velocity = (b * axle_velocity[0] + a * axle_velocity[1]) / (a + b)
+        pitch_rate = (axle_velocity[0] - axle_velocity[1]) / (a + b)
+        offset = np.array(
+            [
+                dz,
+                velocity,
+                pitch,
+                pitch_rate,
+                axle_shift[0],
+                axle_velocity[0],
+                axle_shift[1],
+                axle_velocity[1],
+            ]
+        )
         return (
             w,
             bound,
-            [float(distances[-1]), float(distances[-1]), float(np.mean(observed))],
+            [float(distances[-1]), float(distances[-1]), min(self.coverage_fractions)],
             offset,
         )
