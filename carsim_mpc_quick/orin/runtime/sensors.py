@@ -40,12 +40,12 @@ def image_at(images, frame):
 
 
 def spawn_driving_lidar(world, carla, vehicle):
-    """Full 360-degree frame at 20 Hz; CVPR2021 sensor pose, density recorded by caller."""
+    """Original CVPR2021 leaderboard LiDAR settings (10 Hz, half-scan at 20 FPS)."""
     blueprint = world.get_blueprint_library().find("sensor.lidar.ray_cast")
     for key, value in dict(
         channels=64,
         points_per_second=600000,
-        rotation_frequency=20,
+        rotation_frequency=10,
         range=85,
         upper_fov=10,
         lower_fov=-30,

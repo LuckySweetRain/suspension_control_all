@@ -167,7 +167,7 @@ class DrivingSession:
     def __init__(self):
         self.tracker = TrajectoryTracker()
         self.plan = None
-        self.tcp_control = None
+        self.native_control = None
 
     def step(self, request, sim_time):
         if "cruise_speed_mps" in request:
@@ -185,22 +185,30 @@ class DrivingSession:
             if self.plan is not None and plan.sequence <= self.plan.sequence:
                 raise ValueError("Driving plan sequence did not increase")
             self.plan = plan
-            if plan.model == "tcp-third-party-reproduction":
-                action = packet["tcp_control"]
-                if action["policy"] != "tcp_official_agent":
-                    raise ValueError("TCP requires its original agent policy")
+            native_models = {
+                "tcp-third-party-reproduction": ("tcp_control", "tcp_official_agent"),
+                "transfuser-cvpr2021-official": ("transfuser_control", "transfuser_cvpr2021_agent"),
+            }
+            if plan.model in native_models:
+                field, policy = native_models[plan.model]
+                action = packet[field]
+                if action["policy"] != policy:
+                    raise ValueError("Model requires its original agent policy")
                 steer, throttle, brake = (
                     float(action[k]) for k in ("steer_right_positive", "throttle", "brake")
                 )
                 if not _finite((steer, throttle, brake)) or not (
                     -1 <= steer <= 1 and 0 <= throttle <= 0.75 and 0 <= brake <= 1
                 ):
-                    raise ValueError("Invalid native TCP actuator command")
-                self.tcp_control = dict(action)
-        if self.plan is not None and self.plan.model == "tcp-third-party-reproduction":
+                    raise ValueError("Invalid native model actuator command")
+                self.native_control = dict(action)
+        if self.plan is not None and self.plan.model in (
+            "tcp-third-party-reproduction",
+            "transfuser-cvpr2021-official",
+        ):
             if not -1e-6 <= sim_time - self.plan.captured_at <= self.tracker.max_age:
-                raise ValueError("Stale or future native TCP command")
-            action = self.tcp_control
+                raise ValueError("Stale or future native model command")
+            action = self.native_control
             # CARLA steer is right-positive and normalized; CarSim wants a
             # left-positive steering-wheel angle. Keep the existing provisional
             # max road-wheel angle, steering ratio and hydraulic pressure map.
@@ -210,8 +218,8 @@ class DrivingSession:
                 throttle=float(action["throttle"]),
                 brake=float(action["brake"]),
                 target_speed_mps=action["desired_speed_mps"],
-                reason="tcp_original",
-                control_source="tcp_official_agent",
+                reason="model_original",
+                control_source=action["policy"],
                 native_steer_right_positive=action["steer_right_positive"],
                 carsim_inputs=[
                     math.degrees(steer_rad) * 16.0,

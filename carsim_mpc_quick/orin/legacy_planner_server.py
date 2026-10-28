@@ -60,6 +60,22 @@ class LegacyPlanner:
         self.model = self.model.cuda().eval()
         self.config = config
         self.tcp_policy = None
+        self.transfuser_points = None
+        self.transfuser_prediction_time = None
+
+    def reset_model_controllers(self):
+        for name, prefix in (("turn_controller", "turn"), ("speed_controller", "speed")):
+            previous = getattr(self.model, name)
+            setattr(
+                self.model,
+                name,
+                type(previous)(
+                    K_P=getattr(self.config, prefix + "_KP"),
+                    K_I=getattr(self.config, prefix + "_KI"),
+                    K_D=getattr(self.config, prefix + "_KD"),
+                    n=getattr(self.config, prefix + "_n"),
+                ),
+            )
 
     def infer(self, request):
         import numpy as np
@@ -86,6 +102,8 @@ class LegacyPlanner:
         torch.cuda.reset_peak_memory_stats()
         tcp_control = None
         tcp_action = None
+        transfuser_action = None
+        network_inferred = True
         with torch.inference_mode():
             if self.backend == "tcp":
                 if image.size != (900, 256):
@@ -152,11 +170,38 @@ class LegacyPlanner:
                     raise ValueError("Need a finite real LiDAR frame")
                 if request["lidar_preset"] != "cvpr2021_yaw_minus90_z2.5":
                     raise ValueError("Unexpected LiDAR extrinsics")
+                if request["seq"] == 0:
+                    self.reset_model_controllers()
+                    self.transfuser_points = None
+                network_inferred = request["seq"] % 2 == 0 or request["seq"] <= 4
                 cloud[:, 1] *= -1
                 bev = torch.from_numpy(lidar_to_histogram_features(cloud)).unsqueeze(0).cuda()
                 # Preserve the released agent's raw 0..255 float preprocessing.
                 rgb = torch.from_numpy(scale_and_crop_image(image)).unsqueeze(0).float().cuda()
-                points = self.model([rgb], [bev], goal, velocity)
+                if network_inferred:
+                    self.transfuser_points = self.model([rgb], [bev], goal, velocity)
+                    self.transfuser_prediction_time = captured
+                if self.transfuser_points is None:
+                    raise ValueError("TransFuser episode must start at sequence zero")
+                points = self.transfuser_points
+                if request["seq"] < self.config.seq_len:
+                    steer, throttle, brake, desired_speed = 0.0, 0.0, 0.0, 0.0
+                else:
+                    steer, throttle, brake, metadata = self.model.control_pid(
+                        points.clone(), velocity
+                    )
+                    if brake < 0.05:
+                        brake = 0.0
+                    if throttle > brake:
+                        brake = 0.0
+                    desired_speed = float(metadata["desired_speed"])
+                transfuser_action = dict(
+                    policy="transfuser_cvpr2021_agent",
+                    steer_right_positive=float(steer),
+                    throttle=float(throttle),
+                    brake=float(brake),
+                    desired_speed_mps=desired_speed,
+                )
         torch.cuda.synchronize()
         elapsed = (time.perf_counter() - begin) * 1000
         waypoints = points.detach().float().cpu().numpy()
@@ -180,6 +225,11 @@ class LegacyPlanner:
             "inference_ms": elapsed,
             "tcp_control_head": tcp_control,
             "tcp_control": tcp_action,
+            "transfuser_control": transfuser_action,
+            "network_inferred": network_inferred,
+            "waypoint_age_s": captured - self.transfuser_prediction_time
+            if self.backend == "transfuser"
+            else 0.0,
             "peak_cuda_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
         }
 

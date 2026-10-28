@@ -112,7 +112,9 @@ def run(args):
         road_curvature_per_m=curvature,
         mesh_check=mesh_check,
         driving_planner=planner_name,
-        driving_policy="tcp_official_agent" if planner_name == "tcp" else "shared_trajectory_pid",
+        driving_policy={"tcp": "tcp_official_agent", "transfuser": "transfuser_cvpr2021_agent"}.get(
+            planner_name, "shared_trajectory_pid"
+        ),
     )
     if procedural:
         report["semantic_mask"] = "depth within known test-road XY footprint; no road semantic tag"
@@ -129,6 +131,7 @@ def run(args):
                 output,
                 unknown_contact=args.unknown_contact,
                 town=world.get_map().name.split("/")[-1],
+                planner=planner_name,
             )
         world.apply_settings(settings)
         if procedural:
@@ -212,7 +215,7 @@ def run(args):
                 sensor, queues["driving_lidar"] = spawn_driving_lidar(world, carla, vehicle)
                 actors.append(sensor)
                 report["driving_lidar"] = dict(
-                    channels=64, points_per_second=600000, rotation_hz=20, yaw_deg=-90, z_m=2.5
+                    channels=64, points_per_second=600000, rotation_hz=10, yaw_deg=-90, z_m=2.5
                 )
             planner_connection = OrinConnection(args.orin_host, 55003, timeout=180)
             status, _ = planner_connection.exchange({"op": "status"})
@@ -227,8 +230,8 @@ def run(args):
                 "lane following with an explicit next-junction navigation hint; not a driving benchmark"
             )
             report["driving_control_location"] = (
-                "Orin: TCP original agent; MPC endpoint only maps actuators"
-                if planner_name == "tcp"
+                "Orin: original model agent; MPC endpoint only maps actuators"
+                if planner_name in ("tcp", "transfuser")
                 else "Orin: shared PID in MPC endpoint"
             )
         if args.obstacle_at is not None:
@@ -252,7 +255,7 @@ def run(args):
                 heading=(
                     planner_name.upper()
                     + "（Orin）· "
-                    + ("原始策略" if planner_name == "tcp" else "PID 跟踪")
+                    + ("原始策略" if planner_name in ("tcp", "transfuser") else "PID 跟踪")
                     + " · MPC 悬架"
                 )
                 if planner_name
@@ -313,7 +316,7 @@ def run(args):
             if (
                 driving_observation is not None
                 and driving_observation.ready
-                and seq % (5 if planner_name == "tcp" else 20) == 0
+                and seq % (5 if planner_name in ("tcp", "transfuser") else 20) == 0
             ):
                 nav_command = {"straight": 0, "left": 1, "right": 2}[
                     getattr(args, "nav_command", "straight")
@@ -653,8 +656,8 @@ if __name__ == "__main__":
         help="Orin real-weight driving planner for CARLA town or procedural roads",
     )
     arguments = parser.parse_args()
-    if arguments.record and arguments.planner != "tcp":
-        parser.error("record currently requires --planner tcp")
+    if arguments.record and arguments.planner not in ("tcp", "transfuser"):
+        parser.error("record requires --planner tcp or transfuser")
     if not math.isfinite(arguments.road_curvature) or abs(arguments.road_curvature) > 0.01:
         parser.error("road-curvature must be finite and within +/-0.01 per metre")
     if arguments.road_curvature and (not arguments.planner or arguments.road_profile == "town"):

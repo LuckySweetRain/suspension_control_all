@@ -76,6 +76,12 @@ def check_tcp_native():
         held = session.step(dict(request, plan=None), 0.01)
         assert held == result
         assert session.step(dict(request, plan=None), -1e-15) == result
+        transfuser = DrivingSession()
+        tf_action = dict(action, policy="transfuser_cvpr2021_agent")
+        tf_packet = dict(packet, model="transfuser-cvpr2021-official", transfuser_control=tf_action)
+        tf_result = transfuser.step(dict(request, plan=tf_packet), 0)
+        assert tf_result["control_source"] == "transfuser_cvpr2021_agent"
+        assert tf_result["throttle"] == 0.4 and tf_result["brake"] == 0.3
     try:
         session.step(dict(request, plan=None, cruise_speed_mps=11), 0.02)
     except ValueError:

@@ -98,7 +98,7 @@ class LiveView:
                 text += f"\n前/后轴预瞄路高 {road_preview[0] * 1000:6.1f} / {road_preview[2] * 1000:6.1f} mm（相对初始平面）"
             if driving is not None:
                 text += (
-                    f"\n{('TCP 原始策略' if driving.get('control_source') == 'tcp_official_agent' else 'PID')} 轨迹期望 {driving['target_speed_mps'] * 3.6:5.1f} km/h"
+                    f"\n{('TCP 原始策略' if driving.get('control_source') == 'tcp_official_agent' else 'TransFuser 原始策略' if driving.get('control_source') == 'transfuser_cvpr2021_agent' else 'PID')} 轨迹期望 {driving['target_speed_mps'] * 3.6:5.1f} km/h"
                     f"  方向盘 {driving['carsim_inputs'][0]:6.1f}°"
                     f"  油门/制动 {driving['throttle']:.2f}/{driving['brake']:.2f}"
                 )

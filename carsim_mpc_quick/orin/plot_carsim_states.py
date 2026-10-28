@@ -132,15 +132,26 @@ def export(folder):
     plt.close(figure)
 
 
-def watch(suite):
+def watch(suite, live_folder=None):
     import matplotlib.pyplot as plt
 
     figure, axes = plt.subplots(3, 3, figsize=(15, 9))
-    figure.canvas.manager.set_window_title("CarSim 车辆状态 · TCP 多 Town 实时验证")
+    figure.canvas.manager.set_window_title("CarSim 车辆状态 · 自动驾驶闭环实时验证")
     completed, last_preview = set(), [0.0]
 
     def update():
         try:
+            if live_folder is not None:
+                data, limited = read_states(live_folder)
+                draw(figure, axes, data, "CarSim 自动驾驶闭环状态", limited)
+                figure.canvas.draw_idle()
+                if (live_folder / "report.json").exists() and str(live_folder) not in completed:
+                    export(live_folder)
+                    completed.add(str(live_folder))
+                if data and time.monotonic() - last_preview[0] > 10:
+                    figure.savefig(live_folder / "live_state_preview.png", dpi=100)
+                    last_preview[0] = time.monotonic()
+                return
             manifest = json.loads((suite / "manifest.json").read_text())
             for entry in manifest["runs"]:
                 if "artifacts" in entry and entry["artifacts"] not in completed:
@@ -177,12 +188,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", type=Path)
     parser.add_argument("--folder", type=Path)
+    parser.add_argument("--live-folder", type=Path)
     args = parser.parse_args()
     import matplotlib
 
-    matplotlib.use("TkAgg" if args.suite else "Agg")
+    matplotlib.use("TkAgg" if args.suite or args.live_folder else "Agg")
     configure_fonts()
-    if args.suite:
+    if args.live_folder:
+        watch(None, args.live_folder.resolve())
+    elif args.suite:
         watch(args.suite.resolve())
     elif args.folder:
         export(args.folder.resolve())

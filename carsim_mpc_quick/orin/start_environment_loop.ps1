@@ -15,7 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-if ($Record -and ($Planner -ne "tcp" -or $Compare)) { throw "Recording requires TCP single-car mode." }
+if ($Record -and ($Planner -notin @("tcp", "transfuser") -or $Compare)) { throw "Recording requires TCP or TransFuser single-car mode." }
 if ($Planner -and $Compare) { throw "Driving model comparison is not implemented in the two-car viewer yet." }
 if ($RoadCurvature -ne 0 -and (-not $Planner -or $Compare)) { throw "Curved road requires a driving planner in single-car mode." }
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path

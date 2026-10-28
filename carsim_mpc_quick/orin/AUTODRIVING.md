@@ -1,19 +1,21 @@
 # Orin 自动驾驶与主动悬架联合仿真
 
 本入口将 TransFuser、TCP、Qwen-Drive 的真实权重推理接入原 CARLA–CarSim–Orin 框架。
-三种模型通过同一个服务切换运行；TCP 使用原版执行策略，另外两种模型沿用共用轨迹 PID。
+三种模型通过同一个服务切换运行；TCP、TransFuser 使用各自原版执行策略，Qwen 沿用共用轨迹 PID。
 模型、横纵向控制和垂向 MPC 均在 Orin，CarSim 是车辆动力学的唯一求解器。
 CARLA 负责图像、LiDAR、路面网格、场景和可视化。
 
 ```mermaid
 flowchart LR
   CARLA[CARLA 图像 / LiDAR] --> Planner[Orin 模型轨迹规划]
-  Planner --> PID[Qwen/TransFuser 共用 PID]
+  Planner --> PID[Qwen 共用 PID]
   Planner --> TCP[TCP 原版双分支融合策略]
+  Planner --> TF[TransFuser 原版轨迹控制器]
   CARLA --> Depth[Orin 四轮空间深度预瞄]
   Depth --> MPC[Orin 垂向 MPC]
   PID --> CarSim[本机 CarSim 动力学]
   TCP --> CarSim
+  TF --> CarSim
   MPC --> CarSim
   CarSim --> CARLA
 ```
@@ -22,7 +24,7 @@ flowchart LR
 
 | 入口 | 版本与权重来源 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| `transfuser` | 官方 CVPR2021 分支与官方权重 | 400×300 前视 RGB、真实 LiDAR、车速、导航目标点 | 4 点轨迹，点间隔 0.5 s |
+| `transfuser` | 官方 CVPR2021 分支与官方权重 | 400×300 前视 RGB、真实 LiDAR、车速、导航目标点 | 4 点轨迹和原版控制器的转向、油门、制动 |
 | `tcp` | 官方模型结构，第三方复现权重，原版执行策略 | 900×256 前视 RGB、车速、导航目标点、道路指令 | 4 点轨迹和融合后的转向、油门、制动 |
 | `qwen` | Qwen-Drive-1.0-4B 与官方 `planner-sft` | 三视角各 4 帧历史图像、16 个 10 Hz 历史状态、导航指令 | 50 点轨迹，点间隔 0.1 s |
 
@@ -163,7 +165,7 @@ CSV 的 `sim_time_s` 对应图像/状态，`control_time_s` 对应最近执行�
 TCP 原生控制头使用已加载模型的 Beta 分布动作解码，显示归一化的右正转向、油门和制动。
 原始网络分支以 `tcp_control_head` 保存，不单独直接执行；`tcp_control` 是原版执行策略的融合输出。
 当前 TCP 链路为网络控制分支 + TCP 自身的 `control_pid` → 官方融合规则 → CarSim 执行器单位转换。
-额外的共用横纵向 PID 不参与 TCP；Qwen/TransFuser 仍保留各自现有适配链路。
+额外的共用横纵向 PID 不参与 TCP 或 TransFuser；Qwen 保留共用轨迹 PID。
 `CruiseKph`、`--cruise-kph` 以及后端速度覆盖均已删除，没有额外 40 km/h 目标或上限。
 TCP 按原版 20 Hz 更新融合输出，在 100 Hz 执行接口中保持到下一次更新；每个新序列重置原版控制器状态。
 垂向仍由 Orin MPC 控制，交通信号真值仅记录，不介入油门/制动。
@@ -235,5 +237,29 @@ Jnc 为 mm、AVy 为 deg/s、AAy 为 rad/s²；CSV 将 Vz 转为 m/s、Az 转为
 状态图文件为 `carsim_states.png`、`carsim_states.pdf`，实时预览另存 `live_state_preview.png`。
 CSV 保留绝对 Zcg（m），图中的垂向位移减去首个样本并转为 mm，不能当作纯悬架压缩量。
 
+单段实时曲线可用 `--live-folder <本段结果目录>`，窗口在独立 Matplotlib 进程中刷新。
+
 批量复核入口 `review_town_suite.py <批次目录> --evaluate-signals` 会核对 TCP 原版执行量、
 视频帧数、红灯时序并汇总状态图。运行结束不代表红灯合规；异常和中止录像同样保留。
+
+## TransFuser 官方权重与原版执行策略
+
+当前选用 CVPR2021 分支 `6d1d0421598e3767ced97a113739a40a621cdc25` 及清单中校验过 SHA256 的官方权重，
+不是 TransFuser++ 或 2022 架构。RGB 使用 400×300/FOV100 前视图，LiDAR 按该分支 leaderboard wrapper
+设置为 64 线、600000 点/s、10 Hz 转速、20 FPS 半扫描、安装 yaw=-90°。
+原版网络启动阶段逐帧推理，之后隔帧推理约 10 Hz；原版 `model.control_pid` 按 20 Hz 产生动作，
+中间帧复用预测，`network_inferred` 和 `waypoint_age_s` 记录该行为。
+这是模型自带控制器，不再叠加项目的共用轨迹 PID、固定车速或信号真值停车逻辑。
+CarSim 只做既有执行器单位映射，车型标定与原生 CARLA 动力学仍有差异。
+
+```powershell
+python carsim_mpc_quick/orin/deploy_driving_orin.py --planner transfuser
+.\carsim_mpc_quick\orin\start_environment_loop.ps1 -Planner transfuser -Town Town03 -SpawnIndex 159 -UnknownContact record -Seconds 30 -Record
+```
+
+录像命名为 `transfuser_controls.mp4`，控制 CSV 使用 `transfuser_` 前缀；TCP 录像文件名不变。
+2026-10-28 实测为 `results/carla_environment/20261028_210553/`：30 s / 114.1 m、600 次控制请求、
+302 次网络前向、3000 次实际动作逐项核对一致。预热后网络推理中位数约 117 ms，当前仍为离线同步。
+结束时在红灯附近制动停车，尚未验证完整红灯放行与停车线合规。
+验证依据为 `transfuser_validation.json`，状态图为 `carsim_states.png`，主项目七项检查通过，
+报告位于 `results/project_checks/20261028_210351_805487/report.json`。
