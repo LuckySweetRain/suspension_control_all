@@ -12,8 +12,9 @@ import math
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
-from driving import PID, Pose, Trajectory, TrajectoryTracker
+from driving import PID, DrivingSession, Pose, Trajectory, TrajectoryTracker
 
 
 def check_tracker():
@@ -24,9 +25,8 @@ def check_tracker():
     control = tracker.step(plan, origin, 0, 4.0)
     assert abs(control.steer_rad) < 1e-10 and control.throttle > 0 and control.brake == 0
     assert control.target_speed_mps == 4
-    cruise = TrajectoryTracker().step(plan, origin, 9.7, 4.0, cruise_speed_mps=40 / 3.6)
-    assert abs(cruise.target_speed_mps * 3.6 - 40) < 1e-9 and cruise.throttle > 0
-    assert tracker.step(None, origin, 9.7, 4.0, cruise_speed_mps=40 / 3.6).brake == 1
+    deceleration = TrajectoryTracker().step(plan, origin, 9.7, 4.0)
+    assert deceleration.target_speed_mps == 4 and deceleration.brake > 0
     # Moving left of the anchored path requires a right correction, even after yaw rotation.
     x, y = origin.world_point(0, 0.5)
     control = tracker.step(plan, Pose(x, y, origin.yaw), 5, 4.01)
@@ -46,6 +46,48 @@ def check_tracker():
         pid.step(10, 0.01)
     assert pid.integral == 0 and pid.step(-0.2, 0.01) < 0
     return {"status": "passed", "scope": "frame, pedal signs, stale/future/missing, finite, windup"}
+
+
+def check_tcp_native():
+    session = DrivingSession()
+    action = dict(
+        policy="tcp_official_agent",
+        steer_right_positive=0.2,
+        throttle=0.4,
+        brake=0.3,
+        desired_speed_mps=4,
+    )
+    packet = dict(
+        model="tcp-third-party-reproduction",
+        checkpoint="synthetic_adapter_check",
+        seq=0,
+        captured_at=0,
+        origin=[0, 0, 0],
+        points=[[0.5, 2, 0], [1, 4, 0]],
+        tcp_control=action,
+    )
+    request = dict(pose=[0, 0, 0], speed_mps=10, plan=packet)
+    with patch.object(
+        TrajectoryTracker, "step", side_effect=AssertionError("Extra PID must not run for TCP")
+    ):
+        result = session.step(request, 0)
+        assert result["throttle"] == 0.4 and result["brake"] == 0.3
+        assert result["carsim_inputs"][0] < 0 and result["control_source"] == "tcp_official_agent"
+        held = session.step(dict(request, plan=None), 0.01)
+        assert held == result
+        assert session.step(dict(request, plan=None), -1e-15) == result
+    try:
+        session.step(dict(request, plan=None, cruise_speed_mps=11), 0.02)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Removed cruise override was accepted")
+    return dict(
+        status="passed",
+        extra_pid_bypassed=True,
+        native_pedals_preserved=True,
+        steering_sign="right_to_negative_wheel_deg",
+    )
 
 
 def check_carsim(output, case):
@@ -141,7 +183,11 @@ def main():
     if args.case:
         check_carsim(output, args.case)
         return
-    report = {"tracker": check_tracker(), "learned_models_tested": False}
+    report = {
+        "tracker": check_tracker(),
+        "tcp_native_adapter": check_tcp_native(),
+        "learned_models_tested": False,
+    }
     if args.spatial_preview:
         report["spatial_depth_preview"] = check_spatial_preview()
     if args.carsim:

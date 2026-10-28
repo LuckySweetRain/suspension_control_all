@@ -59,6 +59,7 @@ class LegacyPlanner:
         self.model.load_state_dict(weights, strict=True)
         self.model = self.model.cuda().eval()
         self.config = config
+        self.tcp_policy = None
 
     def infer(self, request):
         import numpy as np
@@ -84,6 +85,7 @@ class LegacyPlanner:
         begin = time.perf_counter()
         torch.cuda.reset_peak_memory_stats()
         tcp_control = None
+        tcp_action = None
         with torch.inference_mode():
             if self.backend == "tcp":
                 if image.size != (900, 256):
@@ -99,6 +101,27 @@ class LegacyPlanner:
                 state = torch.cat([velocity.view(1, 1) / 12, goal, one_hot], dim=1)
                 predictions = self.model(rgb.unsqueeze(0).cuda(), state, goal)
                 points = predictions["pred_wp"]
+                if request["seq"] == 0:
+                    from tcp_policy import TCPOriginalPolicy
+
+                    self.tcp_policy = TCPOriginalPolicy()
+                    for name, prefix in (
+                        ("turn_controller", "turn"),
+                        ("speed_controller", "speed"),
+                    ):
+                        previous = getattr(self.model, name)
+                        setattr(
+                            self.model,
+                            name,
+                            type(previous)(
+                                K_P=getattr(self.config, prefix + "_KP"),
+                                K_I=getattr(self.config, prefix + "_KI"),
+                                K_D=getattr(self.config, prefix + "_KD"),
+                                n=getattr(self.config, prefix + "_n"),
+                            ),
+                        )
+                if self.tcp_policy is None:
+                    raise ValueError("TCP episode must start at sequence zero")
                 steer, throttle, brake, _ = self.model.process_action(
                     predictions, command, velocity, goal
                 )
@@ -110,6 +133,14 @@ class LegacyPlanner:
                 )
                 if not all(math.isfinite(v) for v in (steer, throttle, brake)):
                     raise RuntimeError("Nonfinite TCP control head")
+                tcp_action = self.tcp_policy.step(
+                    self.model,
+                    predictions,
+                    tcp_control,
+                    velocity,
+                    goal,
+                    warmup=request["seq"] < self.config.seq_len,
+                )
             else:
                 from transfuser.data import lidar_to_histogram_features, scale_and_crop_image
 
@@ -148,6 +179,7 @@ class LegacyPlanner:
             "points": plan.points,
             "inference_ms": elapsed,
             "tcp_control_head": tcp_control,
+            "tcp_control": tcp_action,
             "peak_cuda_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
         }
 

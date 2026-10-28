@@ -67,6 +67,7 @@ def deploy(planner, host, cache, password):
         with client.open_sftp() as sftp:
             for name in (
                 "driving.py",
+                "tcp_policy.py",
                 "qwen_planner_server.py",
                 "legacy_planner_server.py",
                 "driving_models.json",

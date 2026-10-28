@@ -1,16 +1,19 @@
 # Orin 自动驾驶与主动悬架联合仿真
 
 本入口将 TransFuser、TCP、Qwen-Drive 的真实权重推理接入原 CARLA–CarSim–Orin 框架。
-三种模型通过同一个服务切换运行；横纵向 PID 和垂向 MPC 均在 Orin，CarSim 是车辆动力学的唯一求解器。
+三种模型通过同一个服务切换运行；TCP 使用原版执行策略，另外两种模型沿用共用轨迹 PID。
+模型、横纵向控制和垂向 MPC 均在 Orin，CarSim 是车辆动力学的唯一求解器。
 CARLA 负责图像、LiDAR、路面网格、场景和可视化。
 
 ```mermaid
 flowchart LR
   CARLA[CARLA 图像 / LiDAR] --> Planner[Orin 模型轨迹规划]
-  Planner --> PID[Orin 横纵向 PID]
+  Planner --> PID[Qwen/TransFuser 共用 PID]
+  Planner --> TCP[TCP 原版双分支融合策略]
   CARLA --> Depth[Orin 四轮空间深度预瞄]
   Depth --> MPC[Orin 垂向 MPC]
   PID --> CarSim[本机 CarSim 动力学]
+  TCP --> CarSim
   MPC --> CarSim
   CarSim --> CARLA
 ```
@@ -20,7 +23,7 @@ flowchart LR
 | 入口 | 版本与权重来源 | 输入 | 输出 |
 | --- | --- | --- | --- |
 | `transfuser` | 官方 CVPR2021 分支与官方权重 | 400×300 前视 RGB、真实 LiDAR、车速、导航目标点 | 4 点轨迹，点间隔 0.5 s |
-| `tcp` | 官方模型结构，第三方复现权重 | 900×256 前视 RGB、车速、导航目标点、道路指令 | 轨迹分支的 4 点预测 |
+| `tcp` | 官方模型结构，第三方复现权重，原版执行策略 | 900×256 前视 RGB、车速、导航目标点、道路指令 | 4 点轨迹和融合后的转向、油门、制动 |
 | `qwen` | Qwen-Drive-1.0-4B 与官方 `planner-sft` | 三视角各 4 帧历史图像、16 个 10 Hz 历史状态、导航指令 | 50 点轨迹，点间隔 0.1 s |
 
 代码版本、权重 SHA256 和出处保存在 `driving_models.json`。
@@ -148,7 +151,7 @@ Qwen 在空白程序道路上可能持续预测停车，不能据此宣称自动
 ## TCP 录像与控制量
 
 ```powershell
-.\carsim_mpc_quick\orin\start_environment_loop.ps1 -Planner tcp -Town Town03 -SpawnIndex 159 -CruiseKph 40 -UnknownContact record -Seconds 30 -Record
+.\carsim_mpc_quick\orin\start_environment_loop.ps1 -Planner tcp -Town Town03 -SpawnIndex 159 -UnknownContact record -Seconds 30 -Record
 ```
 
 需要 PATH 中可用的 ffmpeg。结果位于本次 `results/carla_environment/<时间戳>/`：
@@ -158,9 +161,24 @@ CSV 的 `sim_time_s` 对应图像/状态，`control_time_s` 对应最近执行�
 规划量在下一次真实推理前保持，规划帧号用于定位 `driving_plans.json`。
 
 TCP 原生控制头使用已加载模型的 Beta 分布动作解码，显示归一化的右正转向、油门和制动。
-这些量仅作诊断，`applied=false`；当前执行链路仍是 TCP 预测轨迹 → 共用 PID → CarSim，
-垂向由 Orin MPC 控制。PID 方向盘角采用左正的度数，不能直接与 TCP 的归一化转向相减。
-显式 `CruiseKph` 覆盖轨迹速度，视频同时标出轨迹隐含速度和巡航目标。
+原始网络分支以 `tcp_control_head` 保存，不单独直接执行；`tcp_control` 是原版执行策略的融合输出。
+当前 TCP 链路为网络控制分支 + TCP 自身的 `control_pid` → 官方融合规则 → CarSim 执行器单位转换。
+额外的共用横纵向 PID 不参与 TCP；Qwen/TransFuser 仍保留各自现有适配链路。
+`CruiseKph`、`--cruise-kph` 以及后端速度覆盖均已删除，没有额外 40 km/h 目标或上限。
+TCP 按原版 20 Hz 更新融合输出，在 100 Hz 执行接口中保持到下一次更新；每个新序列重置原版控制器状态。
+垂向仍由 Orin MPC 控制，交通信号真值仅记录，不介入油门/制动。
+
+原版 TCP 本身包含内部轨迹 PID 和直接控制分支的融合，不能将“移除额外 PID”解释成删除原版内部 PID。
+`tcp_policy.py` 与固定版本官方 agent 的 120 组连续控制对照完全一致，证据为
+`results/tcp_original_checks/fusion_parity.json`。CarSim 方向盘角仍使用暂定轮角上限 0.45 rad、
+转向比 16、满制动 6 MPa；这是执行器转换，不是额外速度/轨迹控制，尚未完成车型标定。
+CarSim 方向盘角采用左正的度数，TCP 转向为右正的归一化值，两者不能直接相减。
+
+当前原版策略实测录像为 `results/carla_environment/20261028_170113/tcp_controls.mp4`：
+Town03 运行 30 s、行驶约 104 m，600 次真实模型推理、3000 次执行输出逐项与 TCP 融合结果一致。
+车辆自行减速并停车；该短测只验证执行链路，不证明红灯识别或放行后起步正确。
+验证记录为同目录 `native_control_validation.json`。主项目 `check_project.py` 七项通过，
+报告位于 `results/project_checks/20261028_164114_660559/report.json`。
 
 多 Town 录制可运行：
 
@@ -178,4 +196,5 @@ conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/record_t
 2026-10-28 长录制位于 `results/tcp_town_suite/20261028_154401/recording_summary.json`：
 Town03 保存 74.1 s、约 821 m，完整经过 6 个路口后因 MPC fallback 回复校验中止；
 Town01 和 Town02 各保存 90 s、完整经过 2 个路口，随后均触发 GuardRail 接触反馈并停留。
-这两段接口运行完成不能作为长路线自动驾驶成功的结论。视频中的 TCP 原生动作依旧只展示，实际执行为 PID。
+这两段接口运行完成不能作为长路线自动驾驶成功的结论。上述旧录像使用了后来移除的巡航覆盖和共用 PID，
+其中的原生动作仅展示；不能把旧录像当作当前 TCP 原版执行策略的结果。

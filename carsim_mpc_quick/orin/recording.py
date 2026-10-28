@@ -30,10 +30,10 @@ class ControlRecording:
                 "sim_time_s",
                 "control_time_s",
                 "speed_kph",
-                "pid_target_kph",
-                "pid_steering_wheel_deg_left_positive",
-                "pid_throttle",
-                "pid_brake",
+                "tcp_desired_speed_kph",
+                "applied_steering_wheel_deg_left_positive",
+                "applied_throttle",
+                "applied_brake",
                 "tcp_steer_right_positive",
                 "tcp_throttle",
                 "tcp_brake",
@@ -86,7 +86,7 @@ class ControlRecording:
         draw = ImageDraw.Draw(canvas)
         draw.text(
             (18, 14),
-            "TCP（Orin）· " + self.town + " · PID 跟踪 · MPC 主动悬架",
+            "TCP（Orin）· " + self.town + " · 原始策略 · MPC 主动悬架",
             font=self.title,
             fill="#f1f5f9",
         )
@@ -101,7 +101,7 @@ class ControlRecording:
             a, b = plan["points"][:2]
             trajectory_speed = math.hypot(b[1] - a[1], b[2] - a[2]) / (b[0] - a[0]) * 3.6
         draw.text((996, 70), "TCP 网络直接控制头", font=self.font, fill="#67e8f9")
-        draw.text((996, 102), "仅展示，不作为执行输入", font=self.small, fill="#fbbf24")
+        draw.text((996, 102), "原版融合前的控制分支", font=self.small, fill="#fbbf24")
         labels = [("转向（右+）", "steer_right_positive"), ("油门", "throttle"), ("制动", "brake")]
         for index, (label, key) in enumerate(labels):
             text = "--" if native is None else f"{native[key]:+.3f}"
@@ -125,8 +125,8 @@ class ControlRecording:
                 fill="#a3e635",
             )
         rows = [
-            f"仿真时间 {now:6.2f} s    实际车速 {values[76]:5.1f} km/h    巡航/PID 目标 {d['target_speed_mps'] * 3.6:5.1f} km/h",
-            f"实际执行 PID：方向盘（左+）{d['carsim_inputs'][0]:7.2f}°    油门 {d['throttle']:.3f}    制动 {d['brake']:.3f}",
+            f"仿真时间 {now:6.2f} s    实际车速 {values[76]:5.1f} km/h    TCP 轨迹期望 {d['target_speed_mps'] * 3.6:5.1f} km/h",
+            f"TCP 原始策略执行：方向盘（左+）{d['carsim_inputs'][0]:7.2f}°    油门 {d['throttle']:.3f}    制动 {d['brake']:.3f}",
             "TCP 轨迹隐含速度："
             + ("--" if trajectory_speed is None else f"{trajectory_speed:.1f} km/h")
             + (

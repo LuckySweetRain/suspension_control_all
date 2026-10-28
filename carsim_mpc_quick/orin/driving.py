@@ -131,7 +131,7 @@ class TrajectoryTracker:
         self.reset()
         return DrivingControl(0.0, 0.0, 1.0, 0.0, reason)
 
-    def step(self, plan, pose, speed_mps, sim_time, dt=0.01, cruise_speed_mps=None):
+    def step(self, plan, pose, speed_mps, sim_time, dt=0.01):
         if not _finite((speed_mps, sim_time, dt)) or dt <= 0:
             raise ValueError("Invalid measured speed, time, or control period")
         if plan is None:
@@ -146,10 +146,6 @@ class TrajectoryTracker:
         target_speed = min(self.max_speed, math.hypot(b[1] - a[1], b[2] - a[2]) / (b[0] - a[0]))
         if target_speed < 0.3:
             return self.stop("planned_stop")
-        if cruise_speed_mps is not None:
-            if not math.isfinite(cruise_speed_mps) or not 0 < cruise_speed_mps <= self.max_speed:
-                raise ValueError("Cruise speed exceeds tracker limits")
-            target_speed = cruise_speed_mps
         lookahead = max(2.0, max(0.0, speed_mps) * 0.5)
         aim = None
         for point in remaining:
@@ -171,8 +167,11 @@ class DrivingSession:
     def __init__(self):
         self.tracker = TrajectoryTracker()
         self.plan = None
+        self.tcp_control = None
 
     def step(self, request, sim_time):
+        if "cruise_speed_mps" in request:
+            raise ValueError("Cruise speed override has been removed")
         packet = request.get("plan")
         if packet is not None:
             plan = Trajectory(
@@ -186,12 +185,47 @@ class DrivingSession:
             if self.plan is not None and plan.sequence <= self.plan.sequence:
                 raise ValueError("Driving plan sequence did not increase")
             self.plan = plan
+            if plan.model == "tcp-third-party-reproduction":
+                action = packet["tcp_control"]
+                if action["policy"] != "tcp_official_agent":
+                    raise ValueError("TCP requires its original agent policy")
+                steer, throttle, brake = (
+                    float(action[k]) for k in ("steer_right_positive", "throttle", "brake")
+                )
+                if not _finite((steer, throttle, brake)) or not (
+                    -1 <= steer <= 1 and 0 <= throttle <= 0.75 and 0 <= brake <= 1
+                ):
+                    raise ValueError("Invalid native TCP actuator command")
+                self.tcp_control = dict(action)
+        if self.plan is not None and self.plan.model == "tcp-third-party-reproduction":
+            if not -1e-6 <= sim_time - self.plan.captured_at <= self.tracker.max_age:
+                raise ValueError("Stale or future native TCP command")
+            action = self.tcp_control
+            # CARLA steer is right-positive and normalized; CarSim wants a
+            # left-positive steering-wheel angle. Keep the existing provisional
+            # max road-wheel angle, steering ratio and hydraulic pressure map.
+            steer_rad = -float(action["steer_right_positive"]) * 0.45
+            return dict(
+                steer_rad=steer_rad,
+                throttle=float(action["throttle"]),
+                brake=float(action["brake"]),
+                target_speed_mps=action["desired_speed_mps"],
+                reason="tcp_original",
+                control_source="tcp_official_agent",
+                native_steer_right_positive=action["steer_right_positive"],
+                carsim_inputs=[
+                    math.degrees(steer_rad) * 16.0,
+                    action["throttle"],
+                    action["brake"] * 6.0,
+                ],
+                actuator_calibration="provisional_ratio16_brake6MPa_max_roadwheel0.45rad",
+                plan_seq=self.plan.sequence,
+            )
         control = self.tracker.step(
             self.plan,
             Pose(*request["pose"]),
             float(request["speed_mps"]),
             sim_time,
-            cruise_speed_mps=request.get("cruise_speed_mps"),
         )
         # Initial integration calibration: actual D-class steering kinematics and
         # pressure response must be tuned before claiming driving performance.

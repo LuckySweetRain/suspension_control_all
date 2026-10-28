@@ -103,8 +103,6 @@ def main():
             str(selection["spawn"]),
             "--road-profile",
             "town",
-            "--cruise-kph",
-            "40",
             "--unknown-contact",
             "record",
             "--seconds",

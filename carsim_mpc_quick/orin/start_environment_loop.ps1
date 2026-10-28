@@ -1,6 +1,5 @@
 param(
     [ValidateRange(0.05, 120)][double]$Seconds = 10,
-    [ValidateRange(0, 43.2)][double]$CruiseKph = 0,
     [int]$SpawnIndex = 159,
     [string]$OrinHost = "192.168.50.2",
     [string]$Town = "",
@@ -77,7 +76,6 @@ $runArguments = @(
 if (-not $NoVisualize) { $runArguments += "--visualize" }
 if ($Record) { $runArguments += "--record" }
 if ($Planner) { $runArguments += @("--planner", $Planner, "--nav-command", $NavCommand) }
-if ($CruiseKph -gt 0) { $runArguments += @("--cruise-kph", $CruiseKph.ToString([cultureinfo]::InvariantCulture)) }
 if ($Town) { $runArguments += @("--town", $Town) }
 if (-not $Compare) { $runArguments += @("--unknown-contact", $UnknownContact) }
 if ($RoadCurvature -ne 0) { $runArguments += @("--road-curvature", $RoadCurvature.ToString([cultureinfo]::InvariantCulture)) }

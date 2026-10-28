@@ -111,7 +111,7 @@ def run(args):
         road_curvature_per_m=curvature,
         mesh_check=mesh_check,
         driving_planner=planner_name,
-        cruise_target_kph=getattr(args, "cruise_kph", None),
+        driving_policy="tcp_official_agent" if planner_name == "tcp" else "shared_trajectory_pid",
     )
     if procedural:
         report["semantic_mask"] = "depth within known test-road XY footprint; no road semantic tag"
@@ -222,7 +222,11 @@ def run(args):
             report["driving_scope"] = (
                 "lane following with an explicit next-junction navigation hint; not a driving benchmark"
             )
-            report["driving_control_location"] = "Orin: shared PID in MPC endpoint"
+            report["driving_control_location"] = (
+                "Orin: TCP original agent; MPC endpoint only maps actuators"
+                if planner_name == "tcp"
+                else "Orin: shared PID in MPC endpoint"
+            )
         if args.obstacle_at is not None:
             p = terrain.to_world(args.obstacle_at, 0, 0.05)
             barrier = world.spawn_actor(
@@ -241,7 +245,12 @@ def run(args):
             mask_description = "已知道路范围的深度筛选" if procedural else "语义真值掩码"
             viewer = LiveView(
                 "CARLA 地形 · Orin 深度预瞄（" + mask_description + "）· 离线同步仿真",
-                heading=(planner_name.upper() + "（Orin）· PID 跟踪 · MPC 悬架")
+                heading=(
+                    planner_name.upper()
+                    + "（Orin）· "
+                    + ("原始策略" if planner_name == "tcp" else "PID 跟踪")
+                    + " · MPC 悬架"
+                )
                 if planner_name
                 else None,
             )
@@ -249,7 +258,9 @@ def run(args):
             if procedural:
                 viewer.root.title("CARLA 起伏路面闭环 — " + args.road_profile)
             if planner_name:
-                viewer.root.title(planner_name.upper() + " · Orin PID/MPC · " + args.road_profile)
+                viewer.root.title(
+                    planner_name.upper() + " · Orin 原始策略/MPC · " + args.road_profile
+                )
             viewer.show(images["rgb"])
         # Calibrate the CarSim CG/path-origin offset before terrain initialization.
         # Changing that offset afterwards would move a slope beneath settled tyres.
@@ -295,7 +306,11 @@ def run(args):
         for seq in range(round(args.seconds / 0.01)):
             cycle_start = time.perf_counter()
             plan = None
-            if driving_observation is not None and driving_observation.ready and seq % 20 == 0:
+            if (
+                driving_observation is not None
+                and driving_observation.ready
+                and seq % (5 if planner_name == "tcp" else 20) == 0
+            ):
                 nav_command = {"straight": 0, "left": 1, "right": 2}[
                     getattr(args, "nav_command", "straight")
                 ]
@@ -382,8 +397,6 @@ def run(args):
             )
             if driving_observation is not None:
                 request["driving"] = driving_observation.driving_state(values, plan)
-                if getattr(args, "cruise_kph", None) is not None:
-                    request["driving"]["cruise_speed_mps"] = args.cruise_kph / 3.6
             start = time.perf_counter()
             reply, rpc_ms = connection.exchange(request)
             if (
@@ -598,11 +611,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument(
-        "--cruise-kph",
-        type=float,
-        help="Explicit longitudinal cruise target; model retains steering and stop requests",
-    )
-    parser.add_argument(
         "--spawn", type=int, default=None, help="默认使用 Town03 已验证的 159 号起点"
     )
     parser.add_argument("--orin-host", default="192.168.50.2")
@@ -635,12 +643,6 @@ if __name__ == "__main__":
     arguments = parser.parse_args()
     if arguments.record and arguments.planner != "tcp":
         parser.error("record currently requires --planner tcp")
-    if arguments.cruise_kph is not None and (
-        not arguments.planner
-        or not math.isfinite(arguments.cruise_kph)
-        or not 0 < arguments.cruise_kph <= 43.2
-    ):
-        parser.error("cruise-kph requires a driving planner and must be within (0,43.2]")
     if not math.isfinite(arguments.road_curvature) or abs(arguments.road_curvature) > 0.01:
         parser.error("road-curvature must be finite and within +/-0.01 per metre")
     if arguments.road_curvature and (not arguments.planner or arguments.road_profile == "town"):
