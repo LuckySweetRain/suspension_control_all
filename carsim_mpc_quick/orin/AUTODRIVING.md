@@ -216,3 +216,24 @@ Town01 和 Town02 各保存 90 s、完整经过 2 个路口，随后均触发 Gu
 不同信号的结果位于各自的 `signal_<id>/` 中。`signal_validation_summary.json` 还保存人工画面核对。
 自动时序检查不等于严格的红灯违章评分，`inspect_signal_geometry.py --output <结果路径>`
 只读获取候选停止线：该地图多处信号触发区本身位于路口内，不能将其直接视为道路画线停止线。
+
+## CarSim 状态实时曲线
+
+车辆状态由仿真进程按 100 Hz 写入本段 `carsim_states.csv`，绘图在独立的
+`suspension-control` 环境运行，不要求给旧 `carla0911` 环境安装 Matplotlib：
+
+```powershell
+conda run --no-capture-output -n suspension-control python carsim_mpc_quick/orin/plot_carsim_states.py --suite results/tcp_town_suite/20261028_182353
+conda run --no-capture-output -n suspension-control python carsim_mpc_quick/orin/plot_carsim_states.py --folder results/carla_environment/20261028_172703
+```
+
+第一个命令跟随批次切换实时曲线；第二个导出指定已完成运行的 PNG/PDF，并在缺少 CSV 时从
+`trace.json` 回填 100 Hz 状态。曲线包括纵向/侧向速度、相对质心高度、垂向加速度、俯仰/侧倾、
+俯仰角速度、四轮悬架行程、四轮载荷、CarSim 平面轨迹和 MPC 主动力。
+原始导出单位依据 `results/carla_environment_research/vehicle_out.txt`：Vz 为 km/h、Az 为 g、
+Jnc 为 mm、AVy 为 deg/s、AAy 为 rad/s²；CSV 将 Vz 转为 m/s、Az 转为 m/s²，其余按列名保留单位。
+状态图文件为 `carsim_states.png`、`carsim_states.pdf`，实时预览另存 `live_state_preview.png`。
+CSV 保留绝对 Zcg（m），图中的垂向位移减去首个样本并转为 mm，不能当作纯悬架压缩量。
+
+批量复核入口 `review_town_suite.py <批次目录> --evaluate-signals` 会核对 TCP 原版执行量、
+视频帧数、红灯时序并汇总状态图。运行结束不代表红灯合规；异常和中止录像同样保留。

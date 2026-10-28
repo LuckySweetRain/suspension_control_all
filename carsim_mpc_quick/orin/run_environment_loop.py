@@ -40,6 +40,7 @@ def run(args):
     carla = load_carla()
     planner_name = getattr(args, "planner", None)
     recorder = None
+    state_log = None
     curvature = getattr(args, "road_curvature", 0.0)
 
     output = ROOT / "results/carla_environment" / time.strftime("%Y%m%d_%H%M%S")
@@ -118,6 +119,9 @@ def run(args):
         report["spawn_station_m"] = 10.0
     captures = []
     try:
+        from state_telemetry import StateTelemetry
+
+        state_log = StateTelemetry(output)
         if getattr(args, "record", False):
             from recording import ControlRecording
 
@@ -434,6 +438,7 @@ def run(args):
                 )
             )
             vision = None
+            state_log.write(solver.t, values, reply)
             if (seq + 1) % 5 == 0:
                 position = terrain.to_world(
                     values[77],
@@ -546,6 +551,8 @@ def run(args):
             images["rgb"].save_to_disk(str(output / "failure.png"))
         raise
     finally:
+        if state_log is not None:
+            state_log.close()
         if recorder is not None:
             try:
                 recorder.close()

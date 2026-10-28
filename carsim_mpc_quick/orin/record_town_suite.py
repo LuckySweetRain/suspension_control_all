@@ -19,9 +19,10 @@ def choose_start(client, town):
     if list(client.get_world().get_actors().filter("vehicle.*")):
         raise RuntimeError("A vehicle run is still active; refusing to replace its map")
     world = client.load_world(town)
+    world.wait_for_tick(20)
     road_map = world.get_map()
     lights = [a.get_location() for a in world.get_actors().filter("traffic.traffic_light")]
-    candidates = []
+    candidates, fallback = [], []
     for index, transform in enumerate(road_map.get_spawn_points()):
         waypoint = road_map.get_waypoint(transform.location)
         if waypoint.is_junction or waypoint.lane_width < 3.2:
@@ -48,6 +49,17 @@ def choose_start(client, town):
                 upcoming,
                 key=lambda p, yaw=previous: abs((p.transform.rotation.yaw - yaw + 180) % 360 - 180),
             )
+        fallback.append(
+            dict(
+                spawn=index,
+                score=first_turn,
+                first_turn_m=first_turn,
+                first_signal_junction_m=first_junction,
+                signal_junctions=len(junctions),
+                route=points,
+                signal_route_available=False,
+            )
+        )
         if first_junction is None or first_junction < 45:
             continue
         score = first_turn + min(3, len(junctions)) * 20 - abs(first_junction - 110) * 0.1
@@ -59,10 +71,13 @@ def choose_start(client, town):
                 first_signal_junction_m=first_junction,
                 signal_junctions=len(junctions),
                 route=points,
+                signal_route_available=True,
             )
         )
     if not candidates:
-        raise RuntimeError("No suitable signal approach found in " + town)
+        if fallback:
+            return max(fallback, key=lambda c: c["score"])
+        raise RuntimeError("No drivable approach found in " + town)
     return max(candidates, key=lambda c: c["score"])
 
 
