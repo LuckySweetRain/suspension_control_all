@@ -139,3 +139,5 @@ TCP 读超时默认 100 ms，不代表 10 ms 实时截止。角点力维持 ±50
 
 TransFuser、TCP、Qwen-Drive 的 Orin 部署、模型切换、Town03 / 弯道起伏路可视化入口、
 实际闭环结果及当前限制见 [AUTODRIVING.md](AUTODRIVING.md)。垂向继续使用原 MPC。
+
+板端两路风扇的自动温控配置见 [FAN_CONTROL.md](FAN_CONTROL.md)。

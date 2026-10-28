@@ -278,6 +278,7 @@ def run(args):
         vision["initial_road_heights_m"] = initial_road
         report["initial_road_heights_m"] = initial_road
         (output / "first_vision_packet.json").write_text(json.dumps(vision))
+        navigation_waypoint = None
         for seq in range(round(args.seconds / 0.01)):
             cycle_start = time.perf_counter()
             plan = None
@@ -289,8 +290,31 @@ def run(args):
                 if planner_name != "qwen":
                     from driving import Pose
 
-                    waypoint = world.get_map().get_waypoint(vehicle.get_location())
-                    upcoming = waypoint.next(12.0)
+                    # Advance on connected lanes; nearest-road matching at an
+                    # intersection can jump to a crossing or opposing lane.
+                    if navigation_waypoint is None:
+                        navigation_waypoint = world.get_map().get_waypoint(spawn.location)
+                    location = vehicle.get_location()
+                    for _ in range(30):
+                        forward = navigation_waypoint.transform.get_forward_vector()
+                        base = navigation_waypoint.transform.location
+                        ahead = (location.x - base.x) * forward.x + (
+                            location.y - base.y
+                        ) * forward.y
+                        if ahead < 2:
+                            break
+                        connected = navigation_waypoint.next(2.0)
+                        if not connected:
+                            raise RuntimeError("Connected navigation route ended")
+                        previous_yaw = navigation_waypoint.transform.rotation.yaw
+                        navigation_waypoint = min(
+                            connected,
+                            key=lambda candidate, yaw=previous_yaw: abs(
+                                (candidate.transform.rotation.yaw - yaw + 180) % 360 - 180
+                            ),
+                        )
+                    waypoint = navigation_waypoint
+                    upcoming = waypoint.next(12.0 + max(0.0, min(2.0, ahead)))
                     if not upcoming:
                         raise RuntimeError("Navigation route ended; no future lane waypoint")
                     desired_turn = {0: 0, 1: -90, 2: 90}[nav_command]
