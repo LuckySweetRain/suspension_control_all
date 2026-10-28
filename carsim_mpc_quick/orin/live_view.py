@@ -76,6 +76,7 @@ class LiveView:
         steps=0,
         road_preview=None,
         driving=None,
+        tcp_control=None,
     ):
         if self.closed:
             raise ViewerClosed("用户关闭可视化窗口，已停止本次仿真")
@@ -100,6 +101,11 @@ class LiveView:
                     f"\nPID 目标车速 {driving['target_speed_mps'] * 3.6:5.1f} km/h"
                     f"  方向盘 {driving['carsim_inputs'][0]:6.1f}°"
                     f"  油门/制动 {driving['throttle']:.2f}/{driving['brake']:.2f}"
+                )
+            if tcp_control is not None:
+                text += (
+                    f"\nTCP 原生控制头（仅展示）：转向右+ {tcp_control['steer_right_positive']:+.3f}"
+                    f"  油门 {tcp_control['throttle']:.3f}  制动 {tcp_control['brake']:.3f}"
                 )
             self.metrics.set(text)
             self.history.append(

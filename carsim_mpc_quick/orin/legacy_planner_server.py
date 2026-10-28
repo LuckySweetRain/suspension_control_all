@@ -83,6 +83,7 @@ class LegacyPlanner:
         velocity = torch.tensor([speed], device="cuda", dtype=torch.float32)
         begin = time.perf_counter()
         torch.cuda.reset_peak_memory_stats()
+        tcp_control = None
         with torch.inference_mode():
             if self.backend == "tcp":
                 if image.size != (900, 256):
@@ -96,7 +97,19 @@ class LegacyPlanner:
                 one_hot = torch.zeros((1, 6), device="cuda")
                 one_hot[0, command - 1] = 1
                 state = torch.cat([velocity.view(1, 1) / 12, goal, one_hot], dim=1)
-                points = self.model(rgb.unsqueeze(0).cuda(), state, goal)["pred_wp"]
+                predictions = self.model(rgb.unsqueeze(0).cuda(), state, goal)
+                points = predictions["pred_wp"]
+                steer, throttle, brake, _ = self.model.process_action(
+                    predictions, command, velocity, goal
+                )
+                tcp_control = dict(
+                    steer_right_positive=float(steer),
+                    throttle=float(throttle),
+                    brake=float(brake),
+                    applied=False,
+                )
+                if not all(math.isfinite(v) for v in (steer, throttle, brake)):
+                    raise RuntimeError("Nonfinite TCP control head")
             else:
                 from transfuser.data import lidar_to_histogram_features, scale_and_crop_image
 
@@ -134,6 +147,7 @@ class LegacyPlanner:
             "origin": request["origin"],
             "points": plan.points,
             "inference_ms": elapsed,
+            "tcp_control_head": tcp_control,
             "peak_cuda_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
         }
 

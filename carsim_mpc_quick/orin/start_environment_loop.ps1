@@ -10,11 +10,13 @@ param(
     [ValidateRange(-0.01, 0.01)][double]$RoadCurvature = 0,
     [ValidateSet("straight", "left", "right")][string]$NavCommand = "straight",
     [switch]$NoVisualize,
+    [switch]$Record,
     [switch]$Compare,
     [switch]$CheckOnly
 )
 
 $ErrorActionPreference = "Stop"
+if ($Record -and ($Planner -ne "tcp" -or $Compare)) { throw "Recording requires TCP single-car mode." }
 if ($Planner -and $Compare) { throw "Driving model comparison is not implemented in the two-car viewer yet." }
 if ($RoadCurvature -ne 0 -and (-not $Planner -or $Compare)) { throw "Curved road requires a driving planner in single-car mode." }
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
@@ -73,6 +75,7 @@ $runArguments = @(
     "--spawn", $SpawnIndex, "--orin-host", $OrinHost, "--road-profile", $RoadProfile
 )
 if (-not $NoVisualize) { $runArguments += "--visualize" }
+if ($Record) { $runArguments += "--record" }
 if ($Planner) { $runArguments += @("--planner", $Planner, "--nav-command", $NavCommand) }
 if ($CruiseKph -gt 0) { $runArguments += @("--cruise-kph", $CruiseKph.ToString([cultureinfo]::InvariantCulture)) }
 if ($Town) { $runArguments += @("--town", $Town) }

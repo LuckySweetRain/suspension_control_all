@@ -144,3 +144,20 @@ Qwen 在空白程序道路上可能持续预测停车，不能据此宣称自动
 半车 MPC 优化垂向和俯仰，未增加主动侧倾控制。
 
 原 `-Compare` 入口继续提供 MPC/被动悬架双车对照；自动驾驶模型当前接入单车入口。
+
+## TCP 录像与控制量
+
+```powershell
+.\carsim_mpc_quick\orin\start_environment_loop.ps1 -Planner tcp -Town Town03 -SpawnIndex 159 -CruiseKph 40 -UnknownContact record -Seconds 30 -Record
+```
+
+需要 PATH 中可用的 ffmpeg。结果位于本次 `results/carla_environment/<时间戳>/`：
+`tcp_controls.mp4`、`video_telemetry.csv`、`video_first.png` 和 `video_last.png`。
+视频使用真实 CARLA 跟随相机画面，按仿真时间 20 FPS 编码，不包含离线推理等待时间。
+CSV 的 `sim_time_s` 对应图像/状态，`control_time_s` 对应最近执行的控制请求；
+规划量在下一次真实推理前保持，规划帧号用于定位 `driving_plans.json`。
+
+TCP 原生控制头使用已加载模型的 Beta 分布动作解码，显示归一化的右正转向、油门和制动。
+这些量仅作诊断，`applied=false`；当前执行链路仍是 TCP 预测轨迹 → 共用 PID → CarSim，
+垂向由 Orin MPC 控制。PID 方向盘角采用左正的度数，不能直接与 TCP 的归一化转向相减。
+显式 `CruiseKph` 覆盖轨迹速度，视频同时标出轨迹隐含速度和巡航目标。

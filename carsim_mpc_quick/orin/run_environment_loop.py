@@ -39,6 +39,7 @@ def timing_summary(trace):
 def run(args):
     carla = load_carla()
     planner_name = getattr(args, "planner", None)
+    recorder = None
     curvature = getattr(args, "road_curvature", 0.0)
 
     output = ROOT / "results/carla_environment" / time.strftime("%Y%m%d_%H%M%S")
@@ -116,6 +117,10 @@ def run(args):
         report["spawn_station_m"] = 10.0
     captures = []
     try:
+        if getattr(args, "record", False):
+            from recording import ControlRecording
+
+            recorder = ControlRecording(output, unknown_contact=args.unknown_contact)
         world.apply_settings(settings)
         if procedural:
             spawn = world.get_map().get_waypoint_xodr(1, -1, 10).transform
@@ -463,6 +468,10 @@ def run(args):
                         depth_sha256=hashlib.sha256(bytes(images["depth"].raw_data)).hexdigest(),
                     )
                 )
+                if recorder is not None:
+                    recorder.write(
+                        images["rgb"], solver.t, values, reply, plans[-1] if plans else None
+                    )
                 if viewer is not None:
                     viewer.show(
                         images["rgb"],
@@ -473,6 +482,7 @@ def run(args):
                         seq + 1,
                         road_preview=reply["image_preview_w"][:4] if procedural else None,
                         driving=reply.get("driving"),
+                        tcp_control=plans[-1].get("tcp_control_head") if plans else None,
                     )
             trace[-1]["cycle_ms"] = (time.perf_counter() - cycle_start) * 1000
         images["rgb"].save_to_disk(str(output / "last.png"))
@@ -509,6 +519,14 @@ def run(args):
             images["rgb"].save_to_disk(str(output / "failure.png"))
         raise
     finally:
+        if recorder is not None:
+            try:
+                recorder.close()
+                report["recording"] = dict(
+                    path=str(recorder.path), frames=recorder.frames, fps=20, time_basis="simulation"
+                )
+            except Exception as error:
+                report.update(passed=False, recording_error=str(error))
         if connection is not None:
             connection.close()
         if planner_connection is not None:
@@ -573,6 +591,7 @@ if __name__ == "__main__":
     parser.add_argument("--obstacle-at", type=float)
     parser.add_argument("--unknown-contact", choices=("stop", "record"), default="stop")
     parser.add_argument("--visualize", action="store_true")
+    parser.add_argument("--record", action="store_true")
     parser.add_argument("--road-profile", choices=("town",) + PROFILES, default="town")
     parser.add_argument(
         "--nav-command",
@@ -592,6 +611,8 @@ if __name__ == "__main__":
         help="Orin real-weight driving planner for CARLA town or procedural roads",
     )
     arguments = parser.parse_args()
+    if arguments.record and arguments.planner != "tcp":
+        parser.error("record currently requires --planner tcp")
     if arguments.cruise_kph is not None and (
         not arguments.planner
         or not math.isfinite(arguments.cruise_kph)
