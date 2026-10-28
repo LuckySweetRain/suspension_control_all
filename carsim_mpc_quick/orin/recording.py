@@ -124,6 +124,12 @@ class ControlRecording:
                 font=self.small,
                 fill="#a3e635",
             )
+            draw.text(
+                (996, 602),
+                "关联灯：" + str(traffic["associated_light_state"] or "未关联"),
+                font=self.small,
+                fill="#fbbf24",
+            )
         rows = [
             f"仿真时间 {now:6.2f} s    实际车速 {values[76]:5.1f} km/h    TCP 轨迹期望 {d['target_speed_mps'] * 3.6:5.1f} km/h",
             f"TCP 原始策略执行：方向盘（左+）{d['carsim_inputs'][0]:7.2f}°    油门 {d['throttle']:.3f}    制动 {d['brake']:.3f}",

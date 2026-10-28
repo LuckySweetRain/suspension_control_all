@@ -583,7 +583,12 @@ def run(args):
             if traffic_audit is not None:
                 (output / "traffic_audit.json").write_text(
                     json.dumps(
-                        dict(samples=traffic_audit.samples, events=traffic_audit.events), indent=2
+                        dict(
+                            samples=traffic_audit.samples,
+                            events=traffic_audit.events,
+                            signal_changes=traffic_audit.signal_changes,
+                        ),
+                        indent=2,
                     )
                 )
                 report["completed_junctions"] = traffic_audit.crossed
