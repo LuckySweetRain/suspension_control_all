@@ -11,7 +11,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 class ControlRecording:
-    def __init__(self, output, unknown_contact="stop"):
+    def __init__(self, output, unknown_contact="stop", town=""):
+        self.town = town
         self.contact_note = "未分类碰撞仅记录" if unknown_contact == "record" else "未分类碰撞中止"
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
@@ -41,6 +42,9 @@ class ControlRecording:
                 "inference_ms",
                 "mpc_front_N",
                 "mpc_rear_N",
+                "junction_id",
+                "associated_light_id",
+                "associated_light_state",
             ]
         )
         self.process = subprocess.Popen(
@@ -77,12 +81,12 @@ class ControlRecording:
         )
         self.output, self.frames, self.last = output, 0, None
 
-    def write(self, image, now, values, reply, plan):
+    def write(self, image, now, values, reply, plan, traffic=None):
         canvas = Image.new("RGB", (1280, 860), "#101827")
         draw = ImageDraw.Draw(canvas)
         draw.text(
             (18, 14),
-            "TCP（Orin）· 闭环仿真 · PID 跟踪 · MPC 主动悬架",
+            "TCP（Orin）· " + self.town + " · PID 跟踪 · MPC 主动悬架",
             font=self.title,
             fill="#f1f5f9",
         )
@@ -113,6 +117,13 @@ class ControlRecording:
             for x, y in points[1:]:
                 pen.ellipse((x - 4, y - 4, x + 4, y + 4), fill="#fbbf24")
         canvas.paste(panel, (994, 305))
+        if traffic:
+            draw.text(
+                (996, 579),
+                f"已通过路口 {traffic['completed_junctions']}",
+                font=self.small,
+                fill="#a3e635",
+            )
         rows = [
             f"仿真时间 {now:6.2f} s    实际车速 {values[76]:5.1f} km/h    巡航/PID 目标 {d['target_speed_mps'] * 3.6:5.1f} km/h",
             f"实际执行 PID：方向盘（左+）{d['carsim_inputs'][0]:7.2f}°    油门 {d['throttle']:.3f}    制动 {d['brake']:.3f}",
@@ -152,10 +163,20 @@ class ControlRecording:
                 plan["seq"] if plan else None,
                 plan["inference_ms"] if plan else None,
                 *reply["diagnostics"][:2],
+                *(
+                    [
+                        traffic[k]
+                        for k in ("junction_id", "associated_light_id", "associated_light_state")
+                    ]
+                    if traffic
+                    else [None] * 3
+                ),
             ]
         )
         self.frames += 1
         self.last = canvas
+        if self.frames % 20 == 0:
+            self.table.flush()
         if self.frames == 1:
             canvas.save(self.output / "video_first.png")
 

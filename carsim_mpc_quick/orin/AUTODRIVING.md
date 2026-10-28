@@ -161,3 +161,21 @@ TCP 原生控制头使用已加载模型的 Beta 分布动作解码，显示归�
 这些量仅作诊断，`applied=false`；当前执行链路仍是 TCP 预测轨迹 → 共用 PID → CarSim，
 垂向由 Orin MPC 控制。PID 方向盘角采用左正的度数，不能直接与 TCP 的归一化转向相减。
 显式 `CruiseKph` 覆盖轨迹速度，视频同时标出轨迹隐含速度和巡航目标。
+
+多 Town 录制可运行：
+
+```powershell
+conda run --no-capture-output -n carla0911 python carsim_mpc_quick/orin/record_town_suite.py --towns Town01 Town02 Town03 --seconds 90
+```
+
+先启动 CARLA、CarSim Browser 和两个 Orin 服务。脚本逐个加载地图，按连通车道选择有信号路口的起点，
+保存选点依据；每段结束自动关闭本段窗口并释放资源，然后启动下一 Town。
+任务清单和运行日志在 `results/tcp_town_suite/<时间戳>/`，视频和逐帧控制量仍在各段的
+`results/carla_environment/<时间戳>/`。单段入口也支持 `--close-on-complete`。
+信号灯保持地图自带周期，未设置全绿或冻结。`traffic_audit.json` 保存附近信号灯状态与路口进出；
+路口计数不包含在路口内出生后直接驶出的半段。它基于地图车道归属，不能证明遵守红灯或实现完整碰撞。
+
+2026-10-28 长录制位于 `results/tcp_town_suite/20261028_154401/recording_summary.json`：
+Town03 保存 74.1 s、约 821 m，完整经过 6 个路口后因 MPC fallback 回复校验中止；
+Town01 和 Town02 各保存 90 s、完整经过 2 个路口，随后均触发 GuardRail 接触反馈并停留。
+这两段接口运行完成不能作为长路线自动驾驶成功的结论。视频中的 TCP 原生动作依旧只展示，实际执行为 PID。

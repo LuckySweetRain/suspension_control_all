@@ -90,6 +90,7 @@ def run(args):
     settings.synchronous_mode, settings.fixed_delta_seconds = True, 0.05
     actors, solver, connection, viewer, contact = [], None, None, None, None
     planner_connection, driving_observation = None, None
+    traffic_audit, traffic_snapshot = None, None
     plans = []
     wall_start = time.perf_counter()
     trace, vision_audit = [], []
@@ -120,7 +121,11 @@ def run(args):
         if getattr(args, "record", False):
             from recording import ControlRecording
 
-            recorder = ControlRecording(output, unknown_contact=args.unknown_contact)
+            recorder = ControlRecording(
+                output,
+                unknown_contact=args.unknown_contact,
+                town=world.get_map().name.split("/")[-1],
+            )
         world.apply_settings(settings)
         if procedural:
             spawn = world.get_map().get_waypoint_xodr(1, -1, 10).transform
@@ -172,6 +177,9 @@ def run(args):
             )
             actors.append(sensor)
         if planner_name:
+            from traffic_audit import TrafficAudit
+
+            traffic_audit = TrafficAudit(world)
             from driving_observation import CAMERA_VIEWS, DrivingObservation
 
             driving_observation = DrivingObservation(planner_name)
@@ -432,6 +440,7 @@ def run(args):
                 if driving_observation is not None:
                     driving_observation.observe_images(images, solver.t)
                     lane = world.get_map().get_waypoint(position)
+                    traffic_snapshot = traffic_audit.observe(vehicle, lane, solver.t)
                     right = lane.transform.get_right_vector()
                     lateral = (position.x - lane.transform.location.x) * right.x + (
                         position.y - lane.transform.location.y
@@ -470,7 +479,12 @@ def run(args):
                 )
                 if recorder is not None:
                     recorder.write(
-                        images["rgb"], solver.t, values, reply, plans[-1] if plans else None
+                        images["rgb"],
+                        solver.t,
+                        values,
+                        reply,
+                        plans[-1] if plans else None,
+                        traffic=traffic_snapshot,
                     )
                 if viewer is not None:
                     viewer.show(
@@ -553,6 +567,13 @@ def run(args):
         (output / "vision_frames.json").write_text(json.dumps(vision_audit))
         (output / "report.json").write_text(json.dumps(report, indent=2))
         if planner_name:
+            if traffic_audit is not None:
+                (output / "traffic_audit.json").write_text(
+                    json.dumps(
+                        dict(samples=traffic_audit.samples, events=traffic_audit.events), indent=2
+                    )
+                )
+                report["completed_junctions"] = traffic_audit.crossed
             (output / "driving_plans.json").write_text(json.dumps(plans, indent=2))
             tracking = [row["lane_tracking"] for row in trace if "lane_tracking" in row]
             report["driving_validation"] = dict(
@@ -592,6 +613,7 @@ if __name__ == "__main__":
     parser.add_argument("--unknown-contact", choices=("stop", "record"), default="stop")
     parser.add_argument("--visualize", action="store_true")
     parser.add_argument("--record", action="store_true")
+    parser.add_argument("--close-on-complete", action="store_true")
     parser.add_argument("--road-profile", choices=("town",) + PROFILES, default="town")
     parser.add_argument(
         "--nav-command",
@@ -644,4 +666,7 @@ if __name__ == "__main__":
         import gc
 
         gc.collect()
-        live.wait()
+        if arguments.close_on_complete:
+            live.close()
+        else:
+            live.wait()
