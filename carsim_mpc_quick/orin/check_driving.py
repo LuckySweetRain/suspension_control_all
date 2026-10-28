@@ -24,6 +24,9 @@ def check_tracker():
     control = tracker.step(plan, origin, 0, 4.0)
     assert abs(control.steer_rad) < 1e-10 and control.throttle > 0 and control.brake == 0
     assert control.target_speed_mps == 4
+    cruise = TrajectoryTracker().step(plan, origin, 9.7, 4.0, cruise_speed_mps=40 / 3.6)
+    assert abs(cruise.target_speed_mps * 3.6 - 40) < 1e-9 and cruise.throttle > 0
+    assert tracker.step(None, origin, 9.7, 4.0, cruise_speed_mps=40 / 3.6).brake == 1
     # Moving left of the anchored path requires a right correction, even after yaw rotation.
     x, y = origin.world_point(0, 0.5)
     control = tracker.step(plan, Pose(x, y, origin.yaw), 5, 4.01)

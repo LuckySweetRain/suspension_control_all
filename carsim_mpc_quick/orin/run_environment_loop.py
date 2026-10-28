@@ -71,6 +71,9 @@ def run(args):
         (output / "road_specification.json").write_text(
             json.dumps(specification(args.road_profile), indent=2)
         )
+    elif getattr(args, "town", None):
+        if world.get_map().name.split("/")[-1] != args.town:
+            world = client.load_world(args.town)
     elif world.get_map().name.split("/")[-1] == "OpenDriveMap":
         world = client.load_world("Town03")
     if args.spawn is None and not procedural:
@@ -106,6 +109,7 @@ def run(args):
         road_curvature_per_m=curvature,
         mesh_check=mesh_check,
         driving_planner=planner_name,
+        cruise_target_kph=getattr(args, "cruise_kph", None),
     )
     if procedural:
         report["semantic_mask"] = "depth within known test-road XY footprint; no road semantic tag"
@@ -242,8 +246,21 @@ def run(args):
         terrain.origin_cs = (reference.initial[77], reference.initial[78])
         terrain.origin_calibrated = True
         reference.close()
-        solver = CarSim(output, terrain=terrain, contact=True, driving=bool(planner_name))
-        contact = FrontalContact(world, carla, terrain, vehicle)
+        solver = CarSim(
+            output,
+            terrain=terrain,
+            contact=True,
+            driving=bool(planner_name),
+            stop_time=args.seconds + 1,
+        )
+        contact = FrontalContact(
+            world, carla, terrain, vehicle, unknown_policy=getattr(args, "unknown_contact", "stop")
+        )
+        report["unknown_contact_policy"] = contact.unknown_policy
+        if contact.unknown_policy == "record":
+            report["contact_model"] = (
+                "tagged frontal geometry only; unclassified hits recorded without force"
+            )
         connection = OrinConnection(args.orin_host, 55002)
         digest = hashlib.sha256((ROOT / "results/orin/quick_mpc_data.mat").read_bytes()).hexdigest()
         values = solver.initial
@@ -328,6 +345,8 @@ def run(args):
             )
             if driving_observation is not None:
                 request["driving"] = driving_observation.driving_state(values, plan)
+                if getattr(args, "cruise_kph", None) is not None:
+                    request["driving"]["cruise_speed_mps"] = args.cruise_kph / 3.6
             start = time.perf_counter()
             reply, rpc_ms = connection.exchange(request)
             if (
@@ -444,6 +463,13 @@ def run(args):
             contact_events=contact.events,
             max_contact_force_N=contact.max_force,
             final_speed_kph=values[76],
+            distance_travelled_m=sum(
+                math.hypot(b[77] - a[77], b[78] - a[78])
+                for a, b in zip(
+                    [solver.initial] + [row["values"] for row in trace[:-1]],
+                    [row["values"] for row in trace],
+                )
+            ),
             feature_captures=captures,
             max_normalized_qp_violation=max(t["reply"]["diagnostics"][3] for t in trace),
             negative_saturation_fraction=np.mean(
@@ -476,6 +502,10 @@ def run(args):
             wall_seconds=time.perf_counter() - wall_start,
             timing=timing_summary(trace),
             rejected_contact=contact.rejected_contact if contact is not None else None,
+            unclassified_contact_count=contact.unclassified_count if contact is not None else 0,
+            unclassified_contact_samples=contact.unclassified_samples
+            if contact is not None
+            else [],
         )
         (output / "trace.json").write_text(json.dumps(trace, allow_nan=False))
         (output / "vision_frames.json").write_text(json.dumps(vision_audit))
@@ -505,10 +535,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument(
+        "--cruise-kph",
+        type=float,
+        help="Explicit longitudinal cruise target; model retains steering and stop requests",
+    )
+    parser.add_argument(
         "--spawn", type=int, default=None, help="默认使用 Town03 已验证的 159 号起点"
     )
     parser.add_argument("--orin-host", default="192.168.50.2")
+    parser.add_argument(
+        "--town", help="Explicit CARLA city map, e.g. Town05; specify a spawn index"
+    )
     parser.add_argument("--obstacle-at", type=float)
+    parser.add_argument("--unknown-contact", choices=("stop", "record"), default="stop")
     parser.add_argument("--visualize", action="store_true")
     parser.add_argument("--road-profile", choices=("town",) + PROFILES, default="town")
     parser.add_argument(
@@ -529,14 +568,20 @@ if __name__ == "__main__":
         help="Orin real-weight driving planner for CARLA town or procedural roads",
     )
     arguments = parser.parse_args()
+    if arguments.cruise_kph is not None and (
+        not arguments.planner
+        or not math.isfinite(arguments.cruise_kph)
+        or not 0 < arguments.cruise_kph <= 43.2
+    ):
+        parser.error("cruise-kph requires a driving planner and must be within (0,43.2]")
     if not math.isfinite(arguments.road_curvature) or abs(arguments.road_curvature) > 0.01:
         parser.error("road-curvature must be finite and within +/-0.01 per metre")
     if arguments.road_curvature and (not arguments.planner or arguments.road_profile == "town"):
         parser.error(
             "Curved test roads require an Orin driving planner and a procedural road profile"
         )
-    if not math.isfinite(arguments.seconds) or not 0.05 <= arguments.seconds <= 30:
-        parser.error("seconds must be between 0.05 and 30")
+    if not math.isfinite(arguments.seconds) or not 0.05 <= arguments.seconds <= 120:
+        parser.error("seconds must be between 0.05 and 120")
     if arguments.spawn is not None and arguments.spawn < 0:
         parser.error("spawn must be nonnegative")
     if arguments.obstacle_at is not None and (

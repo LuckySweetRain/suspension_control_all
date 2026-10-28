@@ -10,7 +10,12 @@ import math
 
 
 class FrontalContact:
-    def __init__(self, world, carla, terrain, vehicle):
+    def __init__(self, world, carla, terrain, vehicle, unknown_policy="stop"):
+        if unknown_policy not in ("stop", "record"):
+            raise ValueError("Unknown contact policy")
+        self.unknown_policy = unknown_policy
+        self.unclassified_count = 0
+        self.unclassified_samples = []
         self.world, self.carla, self.terrain = world, carla, terrain
         self.front = vehicle.bounding_box.location.x + vehicle.bounding_box.extent.x + 0.05
         self.half_width = vehicle.bounding_box.extent.y * 0.8
@@ -50,6 +55,19 @@ class FrontalContact:
                     )
                     and not (self.terrain.procedural_road and str(h.label).upper() == "NONE")
                 ]
+                if self.unknown_policy == "record":
+                    unknown = [hit for hit in hits if str(hit.label).upper() == "NONE"]
+                    self.unclassified_count += len(unknown)
+                    if unknown and len(self.unclassified_samples) < 200:
+                        self.unclassified_samples.append(
+                            dict(
+                                time=now,
+                                positions=[
+                                    [h.location.x, h.location.y, h.location.z] for h in unknown
+                                ],
+                            )
+                        )
+                    hits = [hit for hit in hits if str(hit.label).upper() != "NONE"]
                 if hits:
                     if str(hits[0].label).upper() == "NONE":
                         self.rejected_contact = dict(

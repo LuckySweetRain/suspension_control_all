@@ -63,6 +63,19 @@ Town03 使用现有 159 号起点，默认指令为沿当前车道继续行驶�
 ```
 
 `-NavCommand left/right/straight` 提供下一路口的导航意图。
+`-CruiseKph 40` 将纵向 PID 目标显式设为 40 km/h；默认仍跟踪模型轨迹给出的速度。
+该巡航设定保留模型停车和无效轨迹停车处理，不能作为交通规则安全层。
+城市巡航命令模板（先保持 CarSim Browser 运行；严格模式可能因未分类几何提前中止）：
+
+```powershell
+.\carsim_mpc_quick\orin\start_environment_loop.ps1 -Planner tcp -Town Town05 -SpawnIndex 236 -RoadProfile town -CruiseKph 40 -Seconds 30
+```
+
+单车城市入口支持最长 120 s，并相应延长 CarSim 求解终止时间。程序测试道路仍限制为 13 s。
+城市中部分射线命中返回未分类 `NONE`，严格默认模式会中止运行。
+`-UnknownContact record` 是可选的不完整碰撞演示模式：保留已分类物体的正向接触反馈，
+未分类命中只记录而不施加碰撞力，报告保存计数和最多 200 条样本。
+该选项不能用于宣称完整碰撞验证；默认 `stop` 行为保持不变。
 TCP/TransFuser 的目标点来自 CARLA 道路拓扑，模型仍负责预测轨迹；没有用拓扑轨迹替代神经网络输出。
 该入口提供局部道路导航提示，尚未实现指定目的地的全局路线管理。
 

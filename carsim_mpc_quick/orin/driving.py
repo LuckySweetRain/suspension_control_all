@@ -131,7 +131,7 @@ class TrajectoryTracker:
         self.reset()
         return DrivingControl(0.0, 0.0, 1.0, 0.0, reason)
 
-    def step(self, plan, pose, speed_mps, sim_time, dt=0.01):
+    def step(self, plan, pose, speed_mps, sim_time, dt=0.01, cruise_speed_mps=None):
         if not _finite((speed_mps, sim_time, dt)) or dt <= 0:
             raise ValueError("Invalid measured speed, time, or control period")
         if plan is None:
@@ -146,6 +146,10 @@ class TrajectoryTracker:
         target_speed = min(self.max_speed, math.hypot(b[1] - a[1], b[2] - a[2]) / (b[0] - a[0]))
         if target_speed < 0.3:
             return self.stop("planned_stop")
+        if cruise_speed_mps is not None:
+            if not math.isfinite(cruise_speed_mps) or not 0 < cruise_speed_mps <= self.max_speed:
+                raise ValueError("Cruise speed exceeds tracker limits")
+            target_speed = cruise_speed_mps
         lookahead = max(2.0, max(0.0, speed_mps) * 0.5)
         aim = None
         for point in remaining:
@@ -183,7 +187,11 @@ class DrivingSession:
                 raise ValueError("Driving plan sequence did not increase")
             self.plan = plan
         control = self.tracker.step(
-            self.plan, Pose(*request["pose"]), float(request["speed_mps"]), sim_time
+            self.plan,
+            Pose(*request["pose"]),
+            float(request["speed_mps"]),
+            sim_time,
+            cruise_speed_mps=request.get("cruise_speed_mps"),
         )
         # Initial integration calibration: actual D-class steering kinematics and
         # pressure response must be tuned before claiming driving performance.

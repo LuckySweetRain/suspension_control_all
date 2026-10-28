@@ -13,9 +13,18 @@ from .paths import DATABASE, ROOT
 class CarSim:
     """One DLL owner; keep original 8 imports / 77 exports and append 4 pose exports."""
 
-    def __init__(self, output, terrain=None, contact=False, driving=False):
+    def __init__(self, output, terrain=None, contact=False, driving=False, stop_time=None):
         output = output.resolve()
         text = (ROOT / "results/orin/runtime_run.par").read_text(encoding="utf-8")
+        if stop_time is not None:
+            if not math.isfinite(stop_time) or stop_time <= 0:
+                raise ValueError("Invalid CarSim stop time")
+            configured = re.search(r"(?m)^TSTOP\s+(\S+)", text)
+            if configured is None:
+                raise ValueError("Missing CarSim stop time")
+            text = re.sub(
+                r"(?m)^TSTOP\s+\S+", f"TSTOP {max(stop_time, float(configured[1]))}", text
+            )
         if terrain is not None:
             road = re.search(
                 r"(?ms)^ENTER_PARSFILE Roads\\3D_Road[^\n]*\n.*?^EXIT_PARSFILE Roads\\3D_Road[^\n]*\.par[ \t]*$",
