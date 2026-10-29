@@ -1,5 +1,18 @@
 # CARLA 环境反馈闭环：当前实现与未完成项
 
+## 当前主动控制开关
+
+2026-10-29 按用户要求，Orin 的 `suspension-environment` 和 `suspension-mpc`
+用户服务已通过 drop-in `passive-mode.conf` 设置 `SUSPENSION_ACTIVE_ENABLED=0`。
+主动轴力保持零，不求解主动 QP；保留基线阻尼和自动驾驶接口。
+回复 `suspension_supervisor.active_enabled=false`、模式 `disabled_passive`。
+常规启动命令不变，重新部署主服务文件也不会删除该 drop-in。
+
+以后需恢复主动控制时，在停止仿真后，将两个服务的
+`~/.config/systemd/user/<服务名>.service.d/passive-mode.conf` 中该变量改为 `1`，
+再执行 `systemctl --user daemon-reload` 并重启这两个服务。未设置变量的独立
+控制器默认仍启用主动模式，MATLAB 参考及主动算法回归不受服务开关影响。
+
 ## 停车与重新起步的悬架监督
 
 2026-10-29 修复低速/停车时仍沿未来路面输出主动轴力的问题。深度预瞄和
