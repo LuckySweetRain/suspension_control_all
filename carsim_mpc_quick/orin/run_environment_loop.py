@@ -6,6 +6,8 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import sys
 import time
 
 import numpy as np
@@ -13,10 +15,10 @@ import numpy as np
 from carla_contact import FrontalContact
 from carla_terrain import CarlaTerrain
 from rough_road import PROFILES, generate_world, road_bounds, specification, verify_mesh
-from runtime.carsim import CarSim
-from runtime.paths import ROOT, load_carla
+from runtime.paths import ROOT, SETTINGS, load_carla
 from runtime.protocol import OrinConnection
 from runtime.sensors import image_at, pack_vision, spawn_camera, spawn_driving_lidar
+from runtime.solver import CarSim
 
 
 def timing_summary(trace):
@@ -45,8 +47,10 @@ def run(args):
 
     output = ROOT / "results/carla_environment" / time.strftime("%Y%m%d_%H%M%S")
     output.mkdir(parents=True)
-    client = carla.Client("127.0.0.1", 2000)
+    client = carla.Client(SETTINGS["carla_host"], 2000)
     client.set_timeout(60)
+    if client.get_client_version() != client.get_server_version():
+        raise RuntimeError("CARLA client and server versions must match")
     world = client.get_world()
     if list(world.get_actors().filter("vehicle.*")):
         raise RuntimeError("Another vehicle simulation is running")
@@ -104,6 +108,11 @@ def run(args):
         spawn_index=None if procedural else args.spawn,
         requested_sim_seconds=args.seconds,
         execution_mode="offline_synchronous",
+        coordinator_platform=sys.platform,
+        coordinator_pid=os.getpid(),
+        solver_backend=os.environ.get("COSIM_SOLVER_BACKEND", "local"),
+        carla_client_version=client.get_client_version(),
+        carla_server_version=client.get_server_version(),
         integration_dt_s=0.001,
         control_dt_s=0.01,
         camera_dt_s=0.05,
@@ -283,6 +292,10 @@ def run(args):
             contact=True,
             driving=bool(planner_name),
             stop_time=args.seconds + 1,
+        )
+        report["solver_owner_pid"] = getattr(solver, "owner_pid", os.getpid())
+        report["solver_process_has_carla_client"] = getattr(
+            solver, "server_carla_client_loaded", True
         )
         contact = FrontalContact(
             world, carla, terrain, vehicle, unknown_policy=getattr(args, "unknown_contact", "stop")

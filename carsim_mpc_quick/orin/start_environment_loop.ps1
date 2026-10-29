@@ -13,7 +13,9 @@ param(
     [switch]$Record,
     [switch]$Compare,
     [switch]$CheckOnly,
-    [switch]$CloseOnComplete
+    [switch]$CloseOnComplete,
+    [switch]$ServerOnly,
+    [switch]$SolverBridge
 )
 
 # Compatibility wrapper: all validation/startup logic lives in scripts/run_cosim.py.
@@ -24,6 +26,11 @@ $configPath = if ($env:COSIM_CONFIG) { $env:COSIM_CONFIG } else { Join-Path $pro
 $settings = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } else { $null }
 $condaExe = if ($settings.windows_conda) { $settings.windows_conda } else { "conda" }
 $environmentName = if ($settings.windows_environment) { $settings.windows_environment } else { "carla0911" }
+if ($SolverBridge) {
+    & $condaExe run --no-capture-output -n $environmentName python (Join-Path $PSScriptRoot "carsim_bridge.py")
+    if ($LASTEXITCODE -ne 0) { throw "Windows CarSim bridge failed." }
+    return
+}
 $runArguments = @("run", "--no-capture-output", "-n", $environmentName, "python", (Join-Path $projectRoot "scripts/run_cosim.py"),
     "--seconds", $Seconds.ToString([cultureinfo]::InvariantCulture), "--spawn", $SpawnIndex,
     "--road-profile", $RoadProfile, "--road-curvature", $RoadCurvature.ToString([cultureinfo]::InvariantCulture),
@@ -36,6 +43,7 @@ if ($Record) { $runArguments += "--record" }
 if ($Compare) { $runArguments += "--compare" }
 if ($CheckOnly) { $runArguments += "--check-only" }
 if ($CloseOnComplete) { $runArguments += "--close-on-complete" }
+if ($ServerOnly) { $runArguments += "--server-only" }
 Push-Location -LiteralPath $projectRoot
 try {
     & $condaExe @runArguments

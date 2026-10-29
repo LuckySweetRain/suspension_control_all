@@ -7,5 +7,10 @@
   "carla_egg": "../CARLA_0.9.11/WindowsNoEditor/PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg",
   "windows_conda": "E:/anaconda3/Scripts/conda.exe",
   "windows_environment": "carla0911",
-  "orin_host": "192.168.50.2"
+  "orin_host": "192.168.50.2",
+  "linux_frontend_python": "~/anaconda3/envs/suspension-carla0911/bin/python",
+  "linux_carla_egg": "results/wsl_split_20261029/carla-0.9.11-py3.7-linux-x86_64.egg",
+  "carla_host": "127.0.0.1",
+  "carsim_bridge_host": "127.0.0.1",
+  "carsim_bridge_port": "56001"
 }

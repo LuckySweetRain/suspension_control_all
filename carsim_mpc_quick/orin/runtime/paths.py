@@ -27,6 +27,11 @@ def read_settings():
         windows_conda="conda",
         windows_environment="carla0911",
         orin_host="192.168.50.2",
+        linux_carla_egg="results/wsl_split_20261029/carla-0.9.11-py3.7-linux-x86_64.egg",
+        linux_frontend_python="~/anaconda3/envs/suspension-carla0911/bin/python",
+        carla_host="127.0.0.1",
+        carsim_bridge_host="127.0.0.1",
+        carsim_bridge_port="56001",
     )
     if CONFIG_PATH.is_file():
         supplied = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
@@ -59,11 +64,14 @@ CARSIM_LIBRARY = (
     / ("Programs/solvers/carsim_64.dll" if os.name == "nt" else "lib64/libcarsim.so.2020.0")
 )
 CARSIM_TEMPLATE = resolve_resource(SETTINGS["carsim_template"])
+LINUX_FRONTEND_PYTHON = resolve_resource(SETTINGS["linux_frontend_python"])
 FONT_PATH = resolve_resource(os.environ.get("COSIM_FONT", "C:/Windows/Fonts/msyh.ttc"))
 if os.name != "nt" and not FONT_PATH.is_file():
     FONT_PATH = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
 CARLA_EGG = (
-    resolve_resource(SETTINGS["carla_egg"])
+    resolve_resource(SETTINGS["linux_carla_egg"])
+    if os.name != "nt"
+    else resolve_resource(SETTINGS["carla_egg"])
     if SETTINGS["carla_egg"]
     else CARLA_ROOT
     / "PythonAPI/carla/dist"

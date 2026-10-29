@@ -20,6 +20,8 @@ SOURCE = ROOT / "carsim_mpc_quick/orin"
 def parser():
     command = argparse.ArgumentParser(description=__doc__)
     command.add_argument("--config", type=Path)
+    command.add_argument("--backend", choices=("auto", "windows-interop"), default="auto")
+    command.add_argument("--server-only", action="store_true", help=argparse.SUPPRESS)
     command.add_argument("--check-only", action="store_true")
     command.add_argument("--dry-run", action="store_true", help="Print commands; do not launch")
     command.add_argument("--seconds", type=float, default=10)
@@ -112,6 +114,132 @@ def windows_command(args, paths):
     return command
 
 
+def ensure_carla(paths):
+    if endpoint_ready(paths.SETTINGS["carla_host"], 2000):
+        return
+    executable = paths.CARLA_ROOT / "CarlaUE4.exe"
+    subprocess.Popen(
+        [
+            str(executable),
+            "-quality-level=Low",
+            "-ResX=800",
+            "-ResY=600",
+            "-windowed",
+            "-nosound",
+            "-RenderOffScreen",
+        ],
+        cwd=str(paths.CARLA_ROOT),
+        creationflags=0x08000000,
+    )
+    for _ in range(30):
+        if endpoint_ready(paths.SETTINGS["carla_host"], 2000):
+            return
+        time.sleep(1)
+    raise RuntimeError("CARLA did not start on port 2000")
+
+
+def run_wsl(args, paths):
+    if args.compare:
+        raise ValueError(
+            "WSL split mode currently supports single-car runs; use --backend windows-interop for comparison"
+        )
+    command = windows_command(args, paths)
+    command[0] = str(paths.LINUX_FRONTEND_PYTHON)
+    if args.dry_run:
+        print(json.dumps(dict(backend="wsl-coordinator-windows-solver", command=command), indent=2))
+        return 0
+    if sys.version_info[:2] != (3, 7):
+        executable = paths.LINUX_FRONTEND_PYTHON
+        if not executable.is_file() or executable.resolve() == Path(sys.executable).resolve():
+            raise RuntimeError("Configure a Python 3.7 Linux client in linux_frontend_python")
+        environment = os.environ.copy()
+        environment["PATH"] = str(executable.parent) + os.pathsep + environment["PATH"]
+        environment["CONDA_PREFIX"] = str(executable.parent.parent)
+        return subprocess.call(
+            [str(executable), str(Path(__file__)), *sys.argv[1:]], env=environment
+        )
+    import numpy
+    from PIL import Image
+
+    carla = paths.load_carla()
+    print(
+        "WSL coordinator:",
+        sys.executable,
+        "NumPy",
+        numpy.__version__,
+        "CARLA",
+        carla.__file__,
+        flush=True,
+    )
+    Image.new("RGB", (8, 8))
+    if not args.no_visualize:
+        import tkinter
+
+        window = tkinter.Tk()
+        window.withdraw()
+        window.update()
+        window.destroy()
+    if args.check_only:
+        print("Native Linux Python and CARLA client OK; Windows DLL will use RPC", flush=True)
+        return 0
+    from runtime.solver_rpc import bridge_control
+
+    bootstrap = wsl_command(args)
+    # Bootstrap only external simulator processes, never the Windows main loop.
+    server_bootstrap = bootstrap + ["-ServerOnly"]
+    if "-NoVisualize" not in server_bootstrap:
+        server_bootstrap.append("-NoVisualize")
+    subprocess.run(server_bootstrap, cwd=ROOT, check=True)
+    owned, process, log = False, None, None
+    try:
+        try:
+            bridge_control("status")
+        except (OSError, RuntimeError):
+            if endpoint_ready(
+                paths.SETTINGS["carsim_bridge_host"], int(paths.SETTINGS["carsim_bridge_port"])
+            ):
+                raise RuntimeError(
+                    "CarSim bridge port is busy; refusing to replace its owner"
+                ) from None
+            folder = ROOT / "results/wsl_bridge"
+            folder.mkdir(exist_ok=True, parents=True)
+            log = (folder / (time.strftime("%Y%m%d_%H%M%S") + ".log")).open("wb")
+            process = subprocess.Popen(
+                bootstrap + ["-SolverBridge"], cwd=ROOT, stdout=log, stderr=log
+            )
+            owned = True
+            for _ in range(30):
+                try:
+                    bridge_control("status")
+                    break
+                except (OSError, RuntimeError):
+                    if process.poll() is not None:
+                        raise RuntimeError(
+                            "Windows solver bridge exited; inspect results/wsl_bridge"
+                        ) from None
+                    time.sleep(1)
+            else:
+                raise RuntimeError("Windows solver bridge failed to start")
+        environment = os.environ.copy()
+        environment["COSIM_SOLVER_BACKEND"] = "windows-rpc"
+        return subprocess.call(command, cwd=ROOT, env=environment)
+    finally:
+        if owned:
+            try:
+                bridge_control("shutdown", timeout=5)
+            except OSError:
+                pass  # Terrain runs close their DLL-owning process themselves.
+            except RuntimeError as error:
+                print("Bridge shutdown:", error, file=sys.stderr)
+            if process is not None:
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+        if log is not None:
+            log.close()
+
+
 def main(argv=None):
     cli = parser()
     args = cli.parse_args(argv)
@@ -131,7 +259,7 @@ def main(argv=None):
         args.config = Path(os.environ["COSIM_CONFIG"])
     if args.config:
         os.environ["COSIM_CONFIG"] = str(args.config.resolve())
-    if os.name != "nt":
+    if os.name != "nt" and args.backend == "windows-interop":
         command = wsl_command(args)
         if args.dry_run:
             print(json.dumps(dict(backend="wsl-windows-interop", command=command), indent=2))
@@ -140,6 +268,9 @@ def main(argv=None):
 
     sys.path.insert(0, str(SOURCE))
     from runtime import paths
+
+    if os.name != "nt":
+        return run_wsl(args, paths)
 
     command = windows_command(args, paths)
     if args.dry_run:
@@ -175,32 +306,14 @@ def main(argv=None):
             raise FileNotFoundError("Missing co-simulation resources: " + ", ".join(missing))
         print("Resource paths OK; license and live control have not been tested", flush=True)
         return 0
+    if args.server_only:
+        ensure_carla(paths)
+        return 0
     host = args.orin_host or paths.SETTINGS["orin_host"]
     for port in [55002] + ([55003] if args.planner else []):
         if not endpoint_ready(host, port):
             raise RuntimeError(f"Orin service unavailable: {host}:{port}")
-    if not endpoint_ready("127.0.0.1", 2000):
-        executable = paths.CARLA_ROOT / "CarlaUE4.exe"
-        flags = 0x08000000  # CREATE_NO_WINDOW, while CARLA renders its sensor views.
-        subprocess.Popen(
-            [
-                str(executable),
-                "-quality-level=Low",
-                "-ResX=800",
-                "-ResY=600",
-                "-windowed",
-                "-nosound",
-                "-RenderOffScreen",
-            ],
-            cwd=str(paths.CARLA_ROOT),
-            creationflags=flags,
-        )
-        for _ in range(30):
-            if endpoint_ready("127.0.0.1", 2000):
-                break
-            time.sleep(1)
-        else:
-            raise RuntimeError("CARLA did not start on port 2000")
+    ensure_carla(paths)
     return subprocess.call(command, cwd=ROOT)
 
 

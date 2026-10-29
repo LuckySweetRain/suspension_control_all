@@ -1,5 +1,9 @@
 # Orin 控制器与 CarSim 联合仿真
 
+日常 WSL 入口及 Windows CarSim 求解器拆分见
+[WSL 联合仿真工作流](../../docs/wsl_cosim.md)。默认模式在 WSL 运行主循环、传感器、
+显示和录像，Windows 仅负责 DLL 桥接及 CARLA 渲染进程；不再只是从 WSL 启动 Windows 主循环。
+
 CARLA 场景、相机和三端基础闭环的启动与测试见 [CARLA_README.md](CARLA_README.md)。
 当前地形闭环、起伏路面和左右对照分别见 [ENVIRONMENT_LOOP.md](ENVIRONMENT_LOOP.md)、
 [ROUGH_ROADS.md](ROUGH_ROADS.md)、[COMPARISON.md](COMPARISON.md)。

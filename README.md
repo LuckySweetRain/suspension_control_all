@@ -4,7 +4,8 @@
 
 当前 CARLA＋CarSim＋Orin 日常运行使用统一入口 `scripts/run_cosim.py`。
 WSL 独立环境、配置和启动步骤见 [WSL 联合仿真工作流](docs/wsl_cosim.md)。
-当前 WSL 调用 Windows CarSim；没有将 Windows DLL 当作 Linux 求解器。
+当前主循环、传感器处理、显示和录像在 WSL 本地运行，CarSim DLL 留在 Windows
+桥接进程中，CARLA 渲染服务也沿用现有 Windows 安装；Orin 继续执行模型服务。
 
 ## Conda 环境
 

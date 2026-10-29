@@ -5,6 +5,11 @@
 `configs/cosim.local.json`；WSL 独立轻量环境见 [WSL 工作流](wsl_cosim.md)。
 这不改变下文的研究工程和部署边界。
 
+WSL 默认已进一步拆分为 Linux 主循环和 Windows DLL 桥：`run_environment_loop.py`
+通过 `runtime/solver.py` 选择 `solver_rpc.py` 的远程求解器；Windows
+`carsim_bridge.py` 只加载 DLL 并转发缺失地形点，不导入 CARLA 客户端或模型。
+WSL 的 Python 3.7 客户端环境定义在 `environments/carla0911-wsl.yml`，由管理入口自动选用。
+
 2026-10-27 整理。主 Python 研究工程、Chrono 工程和 MATLAB/CarSim 工程有不同的模型、配置和
 运行环境，分别保留，不把相似名称的实现合并成同一个动力学模型。
 
