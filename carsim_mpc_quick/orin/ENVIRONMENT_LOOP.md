@@ -1,5 +1,51 @@
 # CARLA 环境反馈闭环：当前实现与未完成项
 
+## 停车与重新起步的悬架监督
+
+2026-10-29 修复低速/停车时仍沿未来路面输出主动轴力的问题。深度预瞄和
+Python 静态预瞄均按实测速度推进，已移除 `minimum_speed_mps=0.5` 的速度下限；
+该下限会把停车误当成仍在以 0.5 m/s 行驶。转弯空间预瞄改用零速连续的横向位移积分，
+停车打方向时也不会除零。
+
+- 使用实际平面速度 `hypot(Vx/3.6, Vy/3.6)` 判定；无横向速度的旧接口仅用纵向速度。
+- 速度不超过 0.2 m/s（0.72 km/h）时停止求解预瞄 QP，主动前后轴力在最多 0.5 s
+  内按限速衰减至零。仍保留 `3 N/(mm/s)` 基线阻尼，不能把非零总导入力误判为主动控制未退出。
+- 恢复需要至少 0.5 m/s（1.8 km/h），以滞回避免低速测量抖动反复切换；恢复时
+  在 0.5 s 内渐增主动参与系数，并限制轴力变化率。初始已在正常速度运行的 MATLAB
+  对照不加渐变，保持原参考一致性。
+- 模式切换清除 QP 热启动，不重置车身初始平衡参考；不清除故障锁存。
+  碰撞/覆盖监督仍可立即进入被动模式，退出后平滑恢复。图像过期或非有限值仍拒收。
+
+以上阈值是当前集成策略，并非经过所有车型标定的停车判据；该模式不提供停车时的主动调平。
+v2 回复新增 `suspension_supervisor`，记录模式、实测速度、阈值和参与系数，原有诊断数组
+长度保持 10，前两项仍为真实下发的前后轴主动控制力。
+
+验证命令：
+
+```powershell
+python carsim_mpc_quick/orin/verify_stop_start.py
+python carsim_mpc_quick/orin/verify_controller.py --data results/orin/quick_mpc_data.mat --fixture results/orin/parity_fixture.mat
+# 真实 DLL 与 Orin 制动停车回归；需 CarSim 许可、55001 服务
+conda run -n carla0911 python carsim_mpc_quick/orin/verify_parking_carsim.py
+```
+
+修改后重新运行 `deploy_orin.py --host 192.168.50.2` 才会更新板端；部署器也会执行
+停车/起步检查。开始部署前先结束仿真，不能在进行中的控制连接上重启服务。
+
+本次验证：Orin 原生求解器 80 步 MATLAB 对照的角点力最大误差为
+`7.96e-13 N`；停车/起步检查通过。真实 CarSim + Orin 专用制动停车工况
+`results/standstill_carsim/20261029_155907/` 运行 800 步，约 3.05 s 进入
+0.2 m/s 以下；退出渐变后连续 446 步主动轴力为零，被动阻尼公式误差为零。
+最后 1 s 的垂向速度 RMS 约为 0.00053 m/s，加速度 RMS 约为 0.00891 m/s²。
+此工况通过 v1 接口使用共享控制器和静态路面，用于隔离制动停车行为；零速图像预瞄
+另外由 `verify_stop_start.py` 检查，不将其写成完整城市闭环验收。
+
+Town01 原版 TransFuser 复测 `results/carla_environment/20261029_155354/`
+在约 35.3 s 因模型驶离可识别道路、有效路面图像不足中止，未覆盖停车，
+报告保持 `passed=false`，录像和状态保留。主项目七项检查报告为
+`results/project_checks/20261029_155244_846350/report.json`。上述检查不证明
+所有停车路况、长路线自动驾驶或悬架控制性能已经通过验证。
+
 波浪路、减速带及凹陷已加入独立入口，见 [ROUGH_ROADS.md](ROUGH_ROADS.md)。
 启动示例：`./carsim_mpc_quick/orin/start_environment_loop.ps1 -RoadProfile combined`。
 这些纵向高程可通过运行时 OpenDRIVE 生成，无需先构建任意网格地图的 UE 工程。

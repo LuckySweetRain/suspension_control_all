@@ -16,6 +16,13 @@ from native_solver import NativeSolver
 
 
 class Controller:
+    # Simulation-time hysteresis. Standstill disables preview actuation, while
+    # passive damper forces remain present. These are integration policy values,
+    # independent of the MATLAB QP weights and vehicle equilibrium reference.
+    STOP_SPEED_MPS = 0.2
+    RESUME_SPEED_MPS = 0.5
+    TRANSITION_SECONDS = 0.5
+
     def __init__(self, path: str):
         self.d = loadmat(path, simplify_cells=True)["data"]
         self.c = self.d["cfg"]
@@ -42,6 +49,26 @@ class Controller:
         self.wz = np.zeros(self.a.shape[0])
         self.wy = np.zeros(self.a.shape[0])
         self.latched = False
+        self.low_speed = False
+        self.active_gain = 1.0
+        self.motion_speed_mps = 0.0
+        self.mode = "active"
+
+    def clear_solver_warm_start(self):
+        """Drop obsolete QP iterates, preserving the physical state origin."""
+        self.wx.fill(0)
+        self.wz.fill(0)
+        self.wy.fill(0)
+
+    def motion_status(self):
+        return dict(
+            mode=self.mode,
+            speed_mps=self.motion_speed_mps,
+            stop_speed_mps=self.STOP_SPEED_MPS,
+            resume_speed_mps=self.RESUME_SPEED_MPS,
+            transition_seconds=self.TRANSITION_SECONDS,
+            active_gain=self.active_gain,
+        )
 
     def state(self, y):
         jf = np.mean(y[[6, 8]])
@@ -69,7 +96,7 @@ class Controller:
     def preview(self, y):
         c = self.c
         p, r = c["preview"], c["robust"]
-        v = max(abs(y[38]) / 3.6, p["minimum_speed_mps"])
+        v = abs(y[38]) / 3.6
         required = np.arange(self.n + 1) * v * c["control_dt"]
         distance = np.minimum(required, p["sensor_range_m"])
         sensor = self.d["road_sensor"]
@@ -133,12 +160,14 @@ class Controller:
         violation = max(0.0, float(np.max(ax - hi)), float(np.max(lo - ax)))
         return force, [_k, violation, float(converged), float(np.max(margin))]
 
-    def step(self, exports, external_preview=None, contact_active=False):
+    def step(self, exports, external_preview=None, contact_active=False, lateral_speed_mps=0.0):
         y = np.asarray(exports, dtype=float)
         if y.shape == (77,):
             y = y[38:77]
         if y.shape != (39,) or not np.all(np.isfinite(y)):
             raise ValueError("Expected 39 or 77 finite CarSim exports")
+        if not np.isfinite(lateral_speed_mps):
+            raise ValueError("Expected finite lateral speed")
         x = self.state(y)
         if external_preview is None:
             w, bound, meta = self.preview(y)
@@ -156,12 +185,49 @@ class Controller:
             or not np.all(np.isfinite(bound))
         ):
             raise ValueError("Invalid external image preview")
-        if contact_active:
+        self.motion_speed_mps = float(np.hypot(y[38] / 3.6, lateral_speed_mps))
+        was_low_speed = self.low_speed
+        if self.motion_speed_mps <= self.STOP_SPEED_MPS:
+            self.low_speed = True
+        elif self.motion_speed_mps >= self.RESUME_SPEED_MPS:
+            self.low_speed = False
+        if self.low_speed != was_low_speed:
+            self.clear_solver_warm_start()
+
+        if self.latched or contact_active:
             # Passive suspension during contact response; this is an explicit
             # collision supervisor, distinct from a QP failure/fallback latch.
             force, info = np.zeros(2), [0, 0.0, 0.0, 0.0]
+            self.active_gain = 0.0
+            self.clear_solver_warm_start()
+            self.mode = "qp_fallback" if self.latched else "supervised_passive"
+        elif self.low_speed:
+            # No QP is solved at standstill. Slew the last actual axle commands
+            # to zero in at most 0.5 s, rather than exciting a parked body with
+            # camera height residuals or keeping a stale preview force alive.
+            slew = (
+                np.minimum(
+                    self.limit / self.TRANSITION_SECONDS,
+                    np.asarray(self.c["force_rate_limit"]),
+                )
+                * self.c["control_dt"]
+            )
+            force = self.prev - np.clip(self.prev, -slew, slew)
+            info = [0, 0.0, 0.0, 0.0]
+            self.active_gain = 0.0
+            self.mode = "low_speed_ramp_down" if np.any(force) else "standstill_passive"
         else:
             force, info = self.solve(x, w, bound)
+            self.active_gain = min(
+                1.0, self.active_gain + self.c["control_dt"] / self.TRANSITION_SECONDS
+            )
+            force *= self.active_gain
+            # Blending must respect the configured force slew limit too.
+            rate = np.asarray(self.c["force_rate_limit"]) * self.c["control_dt"]
+            if self.active_gain < 1.0:
+                rate = np.minimum(rate, self.limit * self.c["control_dt"] / self.TRANSITION_SECONDS)
+            force = np.clip(force, self.prev - rate, self.prev + rate)
+            self.mode = "restart_ramp_up" if self.active_gain < 1.0 else "active"
         # Match the MATLAB runtime: an iteration-limited feasible solution is
         # usable after force/rate projection. Keep convergence visible in diag[4].
         # Reject a materially infeasible solution (normalized bound error >0.5%).
@@ -169,6 +235,8 @@ class Controller:
             self.latched = True
         if self.latched:
             force = np.zeros(2)
+            self.active_gain = 0.0
+            self.mode = "qp_fallback"
         self.prev = force
         total = self.c["carsim_damper_gain"] * y[22:26]
         total += self.c["active_scale"] * 0.5 * force[[0, 1, 0, 1]]

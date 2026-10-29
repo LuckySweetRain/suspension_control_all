@@ -52,6 +52,7 @@ def deploy(host="192.168.1.41"):
                 "controller.py",
                 "server.py",
                 "verify_controller.py",
+                "verify_stop_start.py",
                 "requirements.txt",
                 "native_solver.py",
                 "qp_native.cpp",
@@ -102,6 +103,10 @@ WantedBy=default.target
             f"cd {remote} && g++ -std=c++17 -O3 -Wall -Wextra -Werror -fPIC -shared qp_native.cpp -o qp_native.so"
         )
         run(f"cd {remote} && OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 verify_controller.py")
+        run(
+            f"cd {remote} && OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 "
+            "verify_stop_start.py --data quick_mpc_data.mat --fixture parity_fixture.mat"
+        )
         run(
             "systemctl --user daemon-reload && systemctl --user enable --now suspension-mpc.service"
         )

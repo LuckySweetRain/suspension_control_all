@@ -67,7 +67,12 @@ def serve():
                             contact = bool(request.get("contact", {}).get("active", False))
                             preview_warmup = min(vision.coverage_fractions) < 1.0
                             force, diag, fallback = controller.step(
-                                request["exports"], preview, contact or preview_warmup
+                                request["exports"],
+                                preview,
+                                contact or preview_warmup,
+                                lateral_speed_mps=(request.get("driving") or {}).get(
+                                    "lateral_speed_mps", 0.0
+                                ),
                             )
                             reply = dict(
                                 version=2,
@@ -93,6 +98,7 @@ def serve():
                                 image_axle_coverage=vision.coverage_fractions,
                                 preview_warmup=preview_warmup,
                                 contact_supervisor=contact,
+                                suspension_supervisor=controller.motion_status(),
                                 compute_ms=(time.perf_counter() - begin) * 1000,
                             )
                             if driving_control is not None:

@@ -157,7 +157,7 @@ class DepthPreview:
             # Reuse only when the actual selected points are identical. New frames
             # invalidate this cache; lateral track changes are checked every step.
             self.profile_cache = (mask, stations, heights)
-        v = max(abs(y[38]) / 3.6, cfg["preview"]["minimum_speed_mps"])
+        v = abs(y[38]) / 3.6
         n, dt = int(cfg["horizon"]), cfg["control_dt"]
         distances = np.arange(n + 1) * v * dt
         xf, xr = np.mean(y[[30, 32]]), np.mean(y[[31, 33]])
@@ -238,7 +238,7 @@ class DepthPreview:
         ):
             raise ValueError("Invalid driving preview pose or steering")
         n, dt = int(cfg["horizon"]), cfg["control_dt"]
-        speed = max(abs(y[38]) / 3.6, cfg["preview"]["minimum_speed_mps"])
+        speed = abs(y[38]) / 3.6
         distances = np.arange(n + 1) * speed * dt
         curvature = np.tan(steer) / (cfg["vehicle"]["a"] + cfg["vehicle"]["b"])
         yaw = pose[2]
@@ -252,18 +252,12 @@ class DepthPreview:
                 )
                 / curvature
             )
-        if abs(curvature) < 1e-8:
-            shift += (np.arange(n + 1) * dt * lateral_speed)[:, None] * np.array(
-                [-np.sin(yaw), np.cos(yaw)]
-            )
-        else:
-            shift += (
-                lateral_speed
-                / (speed * curvature)
-                * np.column_stack(
-                    (np.cos(yaw + angles) - np.cos(yaw), np.sin(yaw + angles) - np.sin(yaw))
-                )
-            )
+        # Integrate lateral velocity without dividing by forward speed. The
+        # sinc limit is well-defined at standstill, including nonzero steering.
+        lateral_distance = np.arange(n + 1) * dt * lateral_speed * np.sinc(angles / (2 * np.pi))
+        shift += lateral_distance[:, None] * np.column_stack(
+            (-np.sin(yaw + angles / 2), np.cos(yaw + angles / 2))
+        )
         wheels = np.column_stack((y[30:34], y[34:38]))
         delta = wheels - pose[:2]
         c, s = np.cos(angles), np.sin(angles)
