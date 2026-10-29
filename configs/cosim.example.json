@@ -1,0 +1,11 @@
+{
+  "carla_root": "../CARLA_0.9.11/WindowsNoEditor",
+  "carsim_database": "../CarSim_database/carsim_active_suspension",
+  "carsim_program": "E:/Carsim2020.0_Prog",
+  "carsim_library": "E:/Carsim2020.0_Prog/Programs/solvers/carsim_64.dll",
+  "carsim_template": "results/orin/runtime_run.par",
+  "carla_egg": "../CARLA_0.9.11/WindowsNoEditor/PythonAPI/carla/dist/carla-0.9.11-py3.7-win-amd64.egg",
+  "windows_conda": "E:/anaconda3/Scripts/conda.exe",
+  "windows_environment": "carla0911",
+  "orin_host": "192.168.50.2"
+}

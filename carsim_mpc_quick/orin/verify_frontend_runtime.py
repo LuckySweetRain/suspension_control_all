@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import sys
 import threading
 from pathlib import Path
 
-from runtime.paths import ROOT
+from runtime.paths import CARSIM_LIBRARY, ROOT, resolve_resource
 from runtime.protocol import OrinConnection
 
 
@@ -56,12 +57,22 @@ def check_frame(payload, exception=None, fragmented=False):
 
 def verify():
     assert ROOT == Path(__file__).resolve().parents[2]
+    assert resolve_resource("results") == ROOT / "results"
     # Merely importing the infrastructure must not load the CARLA ABI or any DLL.
     from runtime.carsim import CarSim
     from runtime.sensors import image_at, pack_vision, spawn_camera
 
     assert all(callable(item) for item in [CarSim, image_at, pack_vision, spawn_camera])
     assert "carla" not in sys.modules
+    windows_dll_rejected = False
+    if os.name != "nt" and CARSIM_LIBRARY.suffix.lower() == ".dll":
+        try:
+            CarSim(ROOT / "results/unused_platform_guard")
+        except RuntimeError as error:
+            assert "Linux cannot load a Windows CarSim DLL" in str(error)
+            windows_dll_rejected = True
+        else:
+            raise AssertionError("Linux attempted to load a Windows solver DLL")
     valid = (json.dumps(dict(seq=7, forces=[0.0] * 8)) + "\n").encode()
     check_frame(valid, fragmented=True)
     check_frame(valid[:-1], exception=RuntimeError)
@@ -71,6 +82,8 @@ def verify():
         passed=True,
         repository_root_correct=True,
         lazy_carla_import=True,
+        resources_relative_to_repository=True,
+        linux_windows_dll_guard=windows_dll_rejected if os.name != "nt" else "not_applicable",
         fragmented_reply_accepted=True,
         truncated_reply_rejected=True,
         invalid_json_rejected=True,

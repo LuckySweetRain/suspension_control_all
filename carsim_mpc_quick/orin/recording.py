@@ -9,6 +9,8 @@ import subprocess
 
 from PIL import Image, ImageDraw, ImageFont
 
+from runtime.paths import FONT_PATH
+
 
 class ControlRecording:
     def __init__(self, output, unknown_contact="stop", town="", planner="tcp"):
@@ -19,7 +21,7 @@ class ControlRecording:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             raise RuntimeError("ffmpeg must be available on PATH to record")
-        font = "C:/Windows/Fonts/msyh.ttc"
+        font = str(FONT_PATH)
         self.font = ImageFont.truetype(font, 21)
         self.small = ImageFont.truetype(font, 17)
         self.title = ImageFont.truetype(font, 28)

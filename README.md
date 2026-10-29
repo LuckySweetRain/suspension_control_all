@@ -2,6 +2,10 @@
 
 纯 Python 半车主动悬架控制研究项目，包含 PID、SPDF、预瞄 MPC，以及 DDPG、TD3、SAC、PPO 和 SI-RPPO 训练、评估流程。
 
+当前 CARLA＋CarSim＋Orin 日常运行使用统一入口 `scripts/run_cosim.py`。
+WSL 独立环境、配置和启动步骤见 [WSL 联合仿真工作流](docs/wsl_cosim.md)。
+当前 WSL 调用 Windows CarSim；没有将 Windows DLL 当作 Linux 求解器。
+
 ## Conda 环境
 
 从仓库根目录创建并激活独立环境：

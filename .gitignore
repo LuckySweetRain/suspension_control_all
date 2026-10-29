@@ -17,6 +17,7 @@ __pycache__/
 .venv/
 .ruff_cache/
 AGENTS.local.md
+configs/cosim.local.json
 tmp/
 tmp_*/
 tmp_*.pptx

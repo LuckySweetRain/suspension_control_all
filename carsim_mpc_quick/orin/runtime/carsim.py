@@ -7,15 +7,20 @@ import math
 import os
 import re
 
-from .paths import DATABASE, ROOT
+from .paths import CARSIM_LIBRARY, CARSIM_PROGRAM, CARSIM_TEMPLATE, DATABASE
 
 
 class CarSim:
     """One DLL owner; keep original 8 imports / 77 exports and append 4 pose exports."""
 
     def __init__(self, output, terrain=None, contact=False, driving=False, stop_time=None):
+        if os.name != "nt" and CARSIM_LIBRARY.suffix.lower() == ".dll":
+            raise RuntimeError(
+                "Linux cannot load a Windows CarSim DLL. Use scripts/run_cosim.py "
+                "from WSL to launch the Windows frontend, or supply a licensed Linux solver."
+            )
         output = output.resolve()
-        text = (ROOT / "results/orin/runtime_run.par").read_text(encoding="utf-8")
+        text = CARSIM_TEMPLATE.read_text(encoding="utf-8")
         if stop_time is not None:
             if not math.isfinite(stop_time) or stop_time <= 0:
                 raise ValueError("Invalid CarSim stop time")
@@ -66,12 +71,14 @@ class CarSim:
         par.write_text(text, encoding="utf-8")
         sim = output / "runtime.sim"
         prefix = output / "LastRun"
-        dll = "E:/Carsim2020.0_Prog/Programs/solvers/carsim_64.dll"
+        dll = str(CARSIM_LIBRARY)
+        library_keyword = "DLLFILE" if os.name == "nt" else "SOFILE"
+        program_directory = CARSIM_PROGRAM if os.name == "nt" else CARSIM_LIBRARY.parent
         sim.write_text(
             f"SIMFILE\nINPUT {par}\nECHO {prefix}_echo.par\nLOGFILE {prefix}_log.txt\n"
-            f"FINAL {prefix}_end.par\nERDFILE {prefix}.vs\nPROGDIR E:/Carsim2020.0_Prog/\n"
+            f"FINAL {prefix}_end.par\nERDFILE {prefix}.vs\nPROGDIR {program_directory}/\n"
             f"DATADIR {DATABASE}/\nVEHICLE_CODE i_i\nEXT_MODEL_STEP 0.001\n"
-            f"PORTS_IMP 1,{self.n_import}\nPORTS_EXP 1,{self.n_export}\nDLLFILE {dll}\nEND\n",
+            f"PORTS_IMP 1,{self.n_import}\nPORTS_EXP 1,{self.n_export}\n{library_keyword} {dll}\nEND\n",
             encoding="utf-8",
         )
         self.dll = ct.CDLL(dll)

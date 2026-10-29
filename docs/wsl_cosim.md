@@ -1,0 +1,140 @@
+# WSL 联合仿真工作流
+
+## 当前可运行的边界
+
+2026-10-29：WSL 使用 Ubuntu-22.04，独立 Conda 环境为 `suspension-cosim`。
+这个环境管理启动、数值验证、日志和绘图；当前 CarSim 2020 Windows DLL 和
+CARLA 0.9.11 Windows Python 前端仍在 Windows 执行，模型推理与悬架接口仍在 Orin。
+这是 WSL 发起的混合运行，不是把 Windows DLL 转换成 Linux 求解器。
+
+```text
+WSL Ubuntu / suspension-cosim
+  scripts/run_cosim.py           唯一的日常管理入口
+    Windows interop
+      start_environment_loop.ps1  兼容包装，仅选择 Windows Conda 环境
+        同一个 run_cosim.py
+          CARLA + CarSim DLL + 相机/可视化/记录
+            网线直连 → Orin 模型与执行接口
+```
+
+CarSim 确实提供 Linux 求解器：
+
+- [CARLA 0.9.11 官方 CarSim 集成说明](https://carla.readthedocs.io/en/0.9.11/carsim_integration/)
+  在 Ubuntu 一节明确使用 `SOFILE /opt/carsim_2020.0/lib64/libcarsim.so.2020.0`。
+- [CarSim 厂商介绍](https://www.carsim.com/downloads/pdf/CarSim_Introduction.pdf)
+  列出了 Linux 64 位库 `libcarsim.so.2020.1`，并说明非实时 Linux 版没有 VS Browser。
+- [2026.1 官方系统要求](https://aws.carsim.com/users/pdf/release_notes/all/system_requirements.pdf)
+  列出 Ubuntu 22.04/24.04；该说明不能倒推 CarSim 2020 或 WSL 已受支持。
+
+本机尚未取得并验证 Linux 求解器和对应许可。官网文档中的存在性不代表匿名公开下载、
+Windows 许可自动通用或 WSL 许可已经可用。未来全 Linux 迁移还需要匹配的 Linux 库、
+许可、数据库路径和 CARLA Linux 客户端 ABI 的真实验证。当前运行器不自动下载商业软件。
+本次点击官方 CarSim 下载和 2020.0 插件下载入口均跳转到厂商账户登录页，
+没有取得匿名可下载的完整 Linux 安装包。
+
+## 激活独立环境
+
+在 WSL 终端执行：
+
+```bash
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate suspension-cosim
+cd /mnt/e/Desktop/workspace/suspension_control_all
+```
+
+环境位置为 `~/anaconda3/envs/suspension-cosim`，不使用项目中的受保护 Conda 目录。
+新设备可从仓库根目录重建：
+
+```bash
+conda env create -f environments/cosim-wsl.yml
+```
+
+该环境不包含 Torch、Gymnasium、PyChrono、MATLAB 或 Linux CarSim 商业库。
+它不替代根目录 `environment.yml` 定义的 RL 研究环境；训练研究仍使用自己的环境。
+
+## 一份资源配置
+
+首次复制 `configs/cosim.example.json` 为 `configs/cosim.local.json`，然后填写本机路径。
+本机的 local 配置已经生成，不提交 Git，也不包含密码。路径字段可用 Windows 绝对路径，
+或相对于仓库根目录的相对路径；不随终端当前目录改变。
+
+| 字段 | 用途 |
+| --- | --- |
+| `carla_root`、`carla_egg` | Windows CARLA 服务目录与匹配的 Python 3.7 egg |
+| `carsim_program`、`carsim_library` | CarSim 安装目录与 Windows DLL |
+| `carsim_database` | 当前车辆数据库 |
+| `carsim_template` | 已生成的基础 8/77 参数模板 |
+| `windows_conda`、`windows_environment` | Windows Conda 可执行文件与旧 CARLA 前端环境 |
+| `orin_host` | Orin 直连地址 |
+
+传入其他配置可使用 `--config /path/to/config.json`。WSL 只在进程启动时跨 Windows
+边界，1 ms 积分、10 ms 控制和相机数据不逐步绕经 WSL，避免增加一层数据转发。
+资源层会拒绝 Linux Python 直接加载 Windows DLL。
+
+## 日常使用
+
+先保持 CarSim Browser 和有效求解器许可，确认 Orin 服务已启动。
+
+```bash
+# 核对 Windows Python、图形依赖和资源路径；不验证商业许可
+python scripts/run_cosim.py --check-only
+
+# 只打印启动命令，不启动服务或车辆
+python scripts/run_cosim.py --planner transfuser --town Town03 --dry-run
+
+# 可视化并录制，运行结束自动关闭本轮窗口
+python scripts/run_cosim.py --planner transfuser --town Town03 --spawn 159 \
+  --unknown-contact record --seconds 30 --record --close-on-complete
+```
+
+换 Town 时重新选择有效起点。`record` 是未分类接触只记录的演示策略，
+不是完整碰撞验证。主动悬架仍由 Orin 的持久服务开关保持关闭：主动轴力为零，
+被动阻尼继续工作；这个启动器不会修改该开关。
+
+原 Windows 命令仍可用：
+
+```powershell
+.\carsim_mpc_quick\orin\start_environment_loop.ps1 -Planner transfuser -Town Town03 -Seconds 30 -Record
+```
+
+结果仍在仓库 `results/carla_environment/<时间戳>/`，没有复制另一套结果目录。
+WSL 可直接读取 CSV/JSON，也可运行 `plot_carsim_states.py` 导出图：
+
+```bash
+MPLBACKEND=Agg python carsim_mpc_quick/orin/plot_carsim_states.py --help
+```
+
+## 精简范围
+
+- 从 PowerShell 删除重复的依赖检查、网络检查、CARLA 启动和命令拼装实现，统一到
+  `scripts/run_cosim.py`。原脚本只保留参数兼容及 Windows Conda 引导。
+- 从 DLL 包装器及启动器移除硬编码资源路径，共用 `runtime/paths.py` 和 JSON 配置。
+- 不复制原来的 600 多行仿真主循环到 WSL，不另维护一套传感器、地形或控制协议。
+- 保留主研究工程、Chrono、MATLAB 源码和验证入口。这些有不同用途，不作为重复代码删除；
+  数据集、权重、论文源稿、旧实验结果及受保护目录不清理。
+
+WSL 检查不需要 CARLA 的 Windows ABI：
+
+```bash
+python carsim_mpc_quick/orin/verify_frontend_runtime.py
+python carsim_mpc_quick/orin/verify_controller.py \
+  --data results/orin/quick_mpc_data.mat --fixture results/orin/parity_fixture.mat
+python carsim_mpc_quick/orin/verify_stop_start.py
+ruff check .
+```
+
+完整主研究工程的 `scripts/check_project.py` 仍在安装了 Torch/Gymnasium 的研究环境中执行。
+
+## 本次验证记录
+
+- 从 WSL 发起 Town03 的 1 s 仿真，真实 CARLA + CarSim + Orin 完成 100 步，
+  原始结果：`results/carla_environment/20261029_165225/`。
+- 从 WSL 发起 0.5 s 录制，完成 50 步并输出 10 帧视频，结果：
+  `results/carla_environment/20261029_165510/`。
+- WSL 中协议分帧/资源检查、零速 DLL 平台拒绝、80 步 MATLAB 数值对照、
+  停车起步检查和中文状态图导出通过；数值对照角点力最大误差约 `1.25e-12 N`。
+- Windows 和 WSL 的 Ruff 检查通过。主研究工程七项检查通过，报告：
+  `results/project_checks/20261029_165354_467629/report.json`。
+
+这些是混合工作流的短时集成检查，未验证 Linux CarSim 求解器、WSL 商业许可、
+长距离自动驾驶或墙钟实时性。没有据此删除历史研究代码或重新开启主动悬架。

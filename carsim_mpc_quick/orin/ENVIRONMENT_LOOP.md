@@ -169,7 +169,7 @@ Orin 新服务为 `suspension-environment.service`，监听 55002；旧 55001 �
 # 不显示窗口，用于批量复核；仍然使用 CARLA 真实相机图像。
 ./carsim_mpc_quick/orin/start_environment_loop.ps1 -NoVisualize
 
-# 只验证 Python、Pillow DLL 和 Tk 渲染，不连接 Orin、不改变 CARLA 世界。
+# 验证本机 Python、图形依赖和配置资源；不验证许可、不连接 Orin、不改变 CARLA 世界。
 ./carsim_mpc_quick/orin/start_environment_loop.ps1 -CheckOnly
 
 # 无障碍物的短坡道验证；显示真实画面、控制力和加速度

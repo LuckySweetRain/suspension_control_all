@@ -9,7 +9,7 @@ import math
 import time
 from pathlib import Path
 
-from runtime.paths import ROOT
+from runtime.paths import FONT_PATH, ROOT
 from state_telemetry import FIELDS, StateTelemetry
 
 
@@ -45,7 +45,7 @@ def configure_fonts():
     import matplotlib
     from matplotlib import font_manager
 
-    font = Path("C:/Windows/Fonts/msyh.ttc")
+    font = FONT_PATH
     if font.exists():
         font_manager.fontManager.addfont(str(font))
         matplotlib.rcParams["font.family"] = font_manager.FontProperties(fname=str(font)).get_name()

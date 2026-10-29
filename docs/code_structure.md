@@ -1,5 +1,10 @@
 # 代码结构与入口导航
 
+2026-10-29：联合仿真日常启动逻辑集中到 `scripts/run_cosim.py`，原
+`start_environment_loop.ps1` 只保留兼容包装。资源路径统一读取
+`configs/cosim.local.json`；WSL 独立轻量环境见 [WSL 工作流](wsl_cosim.md)。
+这不改变下文的研究工程和部署边界。
+
 2026-10-27 整理。主 Python 研究工程、Chrono 工程和 MATLAB/CarSim 工程有不同的模型、配置和
 运行环境，分别保留，不把相似名称的实现合并成同一个动力学模型。
 
