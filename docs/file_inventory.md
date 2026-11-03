@@ -31,7 +31,6 @@
 | `plot_results.py`、`animate_result.py`、`plot_preview_poly_trajectories.py` | 结果绘图、动画和预瞄拟合展示 |
 | `evaluate_ch6_unified.py`、`rerun_report_experiments.py` | 论文特定配置的统一对比与复现实验 |
 | `generate_ieee_figures.py`、`generate_eps_figures.py`、`ijrnc_figure_style.py` | 历史论文绘图入口及公共样式 |
-| `generate_ch6_matlab_figures.m` | MATLAB 论文绘图，依赖源码中配置的外部报告目录 |
 | `summarize_mpc_parameter_schedule.py` | 汇总已有 BP-NMPS 轨迹中的参数，不提供对应训练或控制器 |
 
 论文脚本中的日期目录、权重和外部报告路径需要与实际数据核对。两个依赖旧全车接口及
@@ -47,7 +46,7 @@
 | `docs/CarSim_QP-MPC联合仿真技术报告.docx` | 保留的 Word 技术报告 |
 | `docs/projects/` | 答辩项目、源稿、独立图稿和导出成果，见 [材料导航](projects/README.md) |
 | `tools/` | 报告与演示文稿辅助工具，见 [工具说明](../tools/README.md) |
-| `carsim_mpc_quick/` | 独立 MATLAB/Simulink/CarSim 工程，包含源码、模型及验证脚本；依赖外部 CarSim 数据库 |
+| `carsim_mpc_quick/` | Python/CarSim/CARLA/Orin 工程，包含控制器、桥接和验证脚本；依赖外部 CarSim 数据库及许可 |
 | `results/` | 实验配置、日志、轨迹、指标、权重和检查报告；常用成果及归档入口见 [结果导航](../results/README.md)，已有引用的路径保留 |
 | `results/archive/` | 无已知仓库引用的历史训练与旧评估；训练按算法分类，原路径映射见 [完整索引](../results/results_cleanup_20260922/目录索引.md) |
 | `datasets/` | 本地路面及专家数据；可能由配置引用 |

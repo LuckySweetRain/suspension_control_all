@@ -58,3 +58,19 @@
   - python scripts/check_gym_registration.py --config configs/default.yaml --smoke
 - 项目检查报告：results/project_checks/20261103_154752_518914/report.json。Gymnasium 对动作归一化和无限观测边界给出提示。
 - 短时检查不能证明训练收敛或控制性能提升；未运行完整训练和 CarSim/CARLA/Orin 联合仿真。结果、数据集和权重保持本地忽略规则。
+
+## 移除 MATLAB/Simulink（2026-11-03）
+
+按用户要求删除 29 个 MATLAB 脚本和 1 个 Simulink 模型，覆盖旧 QP-MPC 配置/矩阵生成、MATLAB 联合仿真、Orin S-Function/TCP 入口及 MATLAB 论文绘图脚本。更新根目录及子项目指南、文件导航和部署缺失数据提示。原两份子项目 README 作为历史实验说明归档在 docs/history/；旧代码可从 Git f915fe7 追溯。
+
+保留 Python→CarSim DLL/RPC、CARLA/Orin 控制器、论文材料和全部已有实验资产。results/orin/quick_mpc_data.mat 与 parity_fixture.mat 由 SciPy 读取，不需要 MATLAB；已确认本地存在。当前没有 Python 矩阵生成器，新设备需单独恢复这两份匹配资产，调整 QP 配置需要另行实现并验证生成流程。
+
+在 suspension-control Conda 环境执行：
+
+- python -m ruff check .：通过。
+- python carsim_mpc_quick/orin/verify_controller.py --data results/orin/quick_mpc_data.mat --fixture results/orin/parity_fixture.mat：NumPy 后端 80 步通过，最大力误差 1.2505552149377763e-12 N，复位/非有限输入/锁定回退通过。
+- python scripts/check_project.py：七项通过，报告 results/project_checks/20261103_165613_617325/report.json；Gymnasium 保留动作归一化和无限观测边界提示。
+- python scripts/run_cosim.py --help：入口可用。
+- git diff --check：通过。工作源码范围已无 .m/.slx/.mdl/.mlx 文件；未扫描受保护目录，未删除历史结果。
+
+未启动真实 CarSim/CARLA/Orin 联合仿真、远端部署或完整训练，短时回归不代表控制性能或实时性保证。原有 .qoder 两项删除保持未提交，不包含在本次改动中。

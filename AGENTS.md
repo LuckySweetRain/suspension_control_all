@@ -54,8 +54,8 @@
 
 ## 子项目边界与 Git 约定
 
-`carsim_mpc_quick/` 是独立的 MATLAB/Simulink/CarSim 项目，依赖外部数据库。
-`projects/` 保存答辩源稿、素材和最终成果；`tools/` 保存文档辅助脚本。
+`carsim_mpc_quick/` 是 Python/CarSim/CARLA/Orin 联合仿真项目，依赖外部数据库及求解器许可。MATLAB/Simulink 源码与模型已移除；历史数值资产和论文材料保留。
+`docs/projects/` 保存答辩源稿、素材和最终成果；`tools/` 保存文档辅助脚本。
 文件用途见 `docs/file_inventory.md`。整理时保留论文源稿、数据集、实验结果和权重；
 重复文件须核对内容与引用，可再生成的预览、编译缓存与提取中间文件不纳入版本管理。
 未经明确授权，不得读取、修改或删除 `tmp/`、`tmp_*`、`.conda_envs/`、`.conda_pkgs/`。

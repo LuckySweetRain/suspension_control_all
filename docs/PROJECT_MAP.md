@@ -7,7 +7,7 @@
 - scripts/train_rl.py：训练；scripts/evaluate_all.py：权重加载与公共评估。
 - experiments/、visualization/：轨迹、指标和绘图。
 - scripts/run_cosim.py：联合仿真主入口，PowerShell 脚本为兼容包装。
-- carsim_mpc_quick/：独立 MATLAB/CarSim、CARLA/Orin 工程。
+- carsim_mpc_quick/：Python/CarSim、CARLA/Orin 联合仿真工程。
 - docs/projects/：由 projects 整体迁入的答辩源稿、素材与导出成果。
 - results/、datasets/：实验与数据，见 EXPERIMENT_INDEX.md。
 

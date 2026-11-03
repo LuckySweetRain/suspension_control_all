@@ -1,6 +1,7 @@
 """Deploy to the user's Orin via SSH. Password is prompted, never saved.
 
-Generate the deployment MAT/fixture with prepare_orin_data.m first.
+Restore the matching deployment MAT and regression fixture from your local backup first.
+MATLAB is not required; see README.md for the numerical artifact requirements.
 Run from any working directory: python carsim_mpc_quick/orin/deploy_orin.py
 """
 
@@ -20,7 +21,10 @@ def deploy(host="192.168.1.41"):
     mat = results / "quick_mpc_data.mat"
     fixture = results / "parity_fixture.mat"
     if not mat.is_file() or not fixture.is_file():
-        raise FileNotFoundError("Run prepare_orin_data.m first")
+        raise FileNotFoundError(
+            "Restore quick_mpc_data.mat and parity_fixture.mat to results/orin/ "
+            "from a matching backup; see carsim_mpc_quick/orin/README.md"
+        )
     digest = hashlib.sha256(mat.read_bytes()).hexdigest()
     (results / "quick_mpc_data.sha256").write_text(digest + "\n", encoding="ascii")
     client = paramiko.SSHClient()

@@ -44,7 +44,7 @@ def main() -> None:
         "- scripts/train_rl.py：训练；scripts/evaluate_all.py：权重加载与公共评估。\n"
         "- experiments/、visualization/：轨迹、指标和绘图。\n"
         "- scripts/run_cosim.py：联合仿真主入口，PowerShell 脚本为兼容包装。\n"
-        "- carsim_mpc_quick/：独立 MATLAB/CarSim、CARLA/Orin 工程。\n"
+        "- carsim_mpc_quick/：Python/CarSim、CARLA/Orin 联合仿真工程。\n"
         "- docs/projects/：由 projects 整体迁入的答辩源稿、素材与导出成果。\n"
         "- results/、datasets/：实验与数据，见 EXPERIMENT_INDEX.md。\n\n"
         "数据流：配置和路面 → 车辆环境 → 观测 → 控制器或策略 → 动作约束 → 动力学更新 → 奖励、指标与轨迹。\n\n"

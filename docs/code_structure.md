@@ -10,15 +10,13 @@ WSL 默认已进一步拆分为 Linux 主循环和 Windows DLL 桥：`run_enviro
 `carsim_bridge.py` 只加载 DLL 并转发缺失地形点，不导入 CARLA 客户端或模型。
 WSL 的 Python 3.7 客户端环境定义在 `environments/carla0911-wsl.yml`，由管理入口自动选用。
 
-2026-10-27 整理。主 Python 研究工程、Chrono 工程和 MATLAB/CarSim 工程有不同的模型、配置和
-运行环境，分别保留，不把相似名称的实现合并成同一个动力学模型。
+2026-11-03：保留主 Python 研究工程与 Python/CarSim/CARLA/Orin 联合仿真。Chrono 和 MATLAB/Simulink 源码、模型及运行入口已移除。
 
 ## 三个代码边界
 
 | 范围 | 入口与职责 | 环境 |
 |---|---|---|
 | 主研究工程 | `scripts/` 调用 `config.py`、`models/`、`roads/`、`envs/`、`controllers/`、`rl/`、`experiments/`、`visualization/` | suspension-control；源码兼容 Python 3.10 |
-| MATLAB/CarSim | `carsim_mpc_quick/run_*.m`、`src/` 与仓库已有 `.slx` 模型 | MATLAB、外部 CarSim 数据库 |
 | CARLA/Orin 前端 | 下表中的命令入口和 Windows `runtime/` 公共基础设施 | carla0911，Python 3.7 |
 | Orin 控制端 | `controller.py`、`depth_preview.py`、`server.py`、`environment_server.py`、`native_solver.py`、`qp_native.cpp` | Orin 独立目录，由 deploy_orin.py 上传 |
 
@@ -74,8 +72,7 @@ conda run -n carla0911 python carsim_mpc_quick/orin/carla_stack.py --help
 
 - 删除旧 `environment_carla0911.yml`，文档统一引用固定兼容 DLL 版本的
   `carla0911.environment.yml`，环境名仍为 carla0911。
-- 删除仅有换行的 `build_carsim_mpc_model.m`。它没有构建实现，不能重建模型；六个调用点改为
-  `src/require_carsim_model.m` 明确检查已有 `.slx`。模型本身保留，缺少时明确报错。
+- MATLAB/Simulink 源码和模型已删除，旧路线说明归档至 `docs/history/`；当前 Python 直接调用 CarSim 求解器。
 - 保留 `__init__.py` 等包标记、仍被文档引用的诊断入口、历史论文脚本与独立算法实现。
   不以“当前没运行”或名称相似作为删除依据。
 - 根目录 `python -m ruff check .` 现在覆盖 Orin 前端；其子目录配置使用 Python 3.7，主工程

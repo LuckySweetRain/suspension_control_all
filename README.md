@@ -28,7 +28,7 @@ conda env update --name suspension-control --file environment.yml
 
 自动化任务可使用 `conda run --name suspension-control python scripts/check_project.py`。
 PyTorch 根据当前安装和硬件自动选择 CUDA 或 CPU；训练支持 `--device cpu`、
-`--device cuda` 和默认的 `--device auto`。PyChrono 与 MATLAB/CarSim 不包含在此环境中。
+`--device cuda` 和默认的 `--device auto`。CarSim 求解器与 CARLA 服务不包含在此环境中；当前运行链路不需要 MATLAB/Simulink。
 
 ## 项目结构
 
@@ -41,7 +41,7 @@ PyTorch 根据当前安装和硬件自动选择 CUDA 或 CPU；训练支持 `--d
 | `rl/` | 四种 RL 算法、Transformer 网络、经验回放 |
 | `experiments/` | 公共评估、轨迹记录与指标计算 |
 | `scripts/`、`visualization/` | 训练、校验、数据生成、绘图与动画 |
-| `carsim_mpc_quick/` | 独立 MATLAB/Simulink/CarSim 子项目，见其 README |
+| `carsim_mpc_quick/` | Python/CarSim/CARLA/Orin 联合仿真子项目，见其 README |
 | `docs/`、`docs/projects/` | 研究记录与答辩材料 |
 | `results/`、`datasets/` | 本地结果、权重与数据，不提交 Git |
 
