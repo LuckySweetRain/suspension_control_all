@@ -1,3 +1,8 @@
+"""多控制器评估入口：读取配置和显式权重，输出指标、轨迹及图表。
+
+从仓库根目录运行；历史实验复现应指定权重路径，避免 latest 随新训练变化。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -15,6 +20,10 @@ from visualization.plots import plot_all
 
 
 def _latest_checkpoint_candidates(algorithm: str) -> list[Path]:
+    """按修改时间倒序查找根层训练权重；归档目录不参与自动选择。
+
+    保留此历史兼容规则；整理结果时不能移动候选或改写其修改时间。
+    """
     return sorted(
         (ROOT / "results").glob(f"*_{algorithm}/checkpoints/final.pt"),
         key=lambda p: p.stat().st_mtime,

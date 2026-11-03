@@ -6,7 +6,7 @@
 | --- | --- |
 | `config.py`、`configs/` | 配置读取、YAML 继承和各算法/场景参数；主入口为 `default.yaml`，快速校验用 `smoke.yaml` |
 | `models/` | 半车动力学和车辆参数 |
-| `envs/` | 半车 Gymnasium 环境、注册与独立四分之一车 RK4/PyChrono 环境 |
+| `envs/` | 半车 Gymnasium 环境与注册 |
 | `roads/` | 路面生成、CSV 导入与预瞄采样 |
 | `controllers/` | PID、SPDF、MPC、RL 策略适配和动作安全处理 |
 | `rl/` | DDPG、TD3、SAC、PPO、网络与经验回放 |
@@ -29,7 +29,6 @@
 | `collect_expert_dataset.py`、`collect_env_statistics.py` | 专家转移数据与观测统计 |
 | `generate_road_dataset.py`、`import_road_directory.py` | 生成路面或导入外部 CSV 目录 |
 | `plot_results.py`、`animate_result.py`、`plot_preview_poly_trajectories.py` | 结果绘图、动画和预瞄拟合展示 |
-| `run_chrono_active_suspension.py` | 独立四分之一车 RK4/PyChrono 实验 |
 | `evaluate_ch6_unified.py`、`rerun_report_experiments.py` | 论文特定配置的统一对比与复现实验 |
 | `generate_ieee_figures.py`、`generate_eps_figures.py`、`ijrnc_figure_style.py` | 历史论文绘图入口及公共样式 |
 | `generate_ch6_matlab_figures.m` | MATLAB 论文绘图，依赖源码中配置的外部报告目录 |
@@ -46,10 +45,11 @@
 | `docs/model_parameter_audit.md`、`docs/alma_analysis/` | 历史模型与实验分析；其中旧路径仅作追溯依据 |
 | `docs/carsim_qp_mpc_latex/` | CarSim 报告 TeX、插图及最终 PDF；辅助编译文件可再生成 |
 | `docs/CarSim_QP-MPC联合仿真技术报告.docx` | 保留的 Word 技术报告 |
-| `projects/` | 答辩项目、源稿、独立图稿和导出成果，见 [材料导航](../projects/README.md) |
+| `docs/projects/` | 答辩项目、源稿、独立图稿和导出成果，见 [材料导航](projects/README.md) |
 | `tools/` | 报告与演示文稿辅助工具，见 [工具说明](../tools/README.md) |
 | `carsim_mpc_quick/` | 独立 MATLAB/Simulink/CarSim 工程，包含源码、模型及验证脚本；依赖外部 CarSim 数据库 |
-| `results/` | 实验配置快照、日志、轨迹、指标、模型权重和检查报告；保留现有结果路径 |
+| `results/` | 实验配置、日志、轨迹、指标、权重和检查报告；常用成果及归档入口见 [结果导航](../results/README.md)，已有引用的路径保留 |
+| `results/archive/` | 无已知仓库引用的历史训练与旧评估；训练按算法分类，原路径映射见 [完整索引](../results/results_cleanup_20260922/目录索引.md) |
 | `datasets/` | 本地路面及专家数据；可能由配置引用 |
 
 缓存、临时预览、PPT 提取结果和已确认重复的备份可以清理。模型权重、实验轨迹、
@@ -58,3 +58,8 @@
 
 环境统一使用仓库外的 Conda 环境。新实验放在 `results/<实验名或时间戳>/`，新数据放在
 `datasets/`；论文定稿放在 `docs/`，答辩定稿放在对应项目的 `exports/`。
+
+2026-09-22 的结果整理保留全部独有实验与指标，清除了内容重复的阶段权重和可再生成的
+PPT 预览，并将缓存、临时探针、运行日志与中间评估统一收纳。四类算法的 `latest` 选择保持不变；
+归档权重使用索引中的新路径显式加载。
+性能筛选口径和逐项操作见 [清理报告](../results/results_cleanup_20260922/清理报告.md)。

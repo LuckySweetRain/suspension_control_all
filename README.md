@@ -35,20 +35,19 @@ PyTorch 根据当前安装和硬件自动选择 CUDA 或 CPU；训练支持 `--d
 | 路径 | 职责 |
 | --- | --- |
 | `config.py`、`configs/` | YAML 继承、算法覆盖、实验配置 |
-| `models/`、`envs/` | 半车动力学、Gymnasium 接口；另有独立四分之一车模型 |
+| `models/`、`envs/` | 半车动力学、Gymnasium 接口 |
 | `roads/` | ISO、凸包、正弦、阶跃、坑洼、组合及表格路面 |
 | `controllers/` | 经典控制器、RL 适配器、共享动作处理与安全层 |
 | `rl/` | 四种 RL 算法、Transformer 网络、经验回放 |
 | `experiments/` | 公共评估、轨迹记录与指标计算 |
 | `scripts/`、`visualization/` | 训练、校验、数据生成、绘图与动画 |
 | `carsim_mpc_quick/` | 独立 MATLAB/Simulink/CarSim 子项目，见其 README |
-| `chrono/` | 独立 Chrono 整车悬架工程与配置，见其 README |
-| `docs/`、`projects/` | 研究记录与答辩材料 |
+| `docs/`、`docs/projects/` | 研究记录与答辩材料 |
 | `results/`、`datasets/` | 本地结果、权重与数据，不提交 Git |
 
 各类文件的用途和保留规则见 [文件导航](docs/file_inventory.md)；
 代码分层、当前启动入口和 CARLA/Orin 公共模块见 [代码结构](docs/code_structure.md)。
-答辩源稿与最终成果见 [研究材料导航](projects/README.md)，文档辅助脚本见
+答辩源稿与最终成果见 [研究材料导航](docs/projects/README.md)，文档辅助脚本见
 [工具说明](tools/README.md)。历史上已跟踪的少量 CarSim 结果 CSV 仍保留在 Git 中。
 
 ## 验证与开发
@@ -107,7 +106,6 @@ python scripts/train_rl.py --algorithm ppo --config configs/half_car_safe_ppo.ya
 ```powershell
 python scripts/generate_road_dataset.py --out datasets/half_car_roads --duration 8
 python scripts/plot_results.py --result-dir results/<实际评估目录>
-python scripts/run_chrono_active_suspension.py --config configs/chrono_quarter_car.yaml --backend rk4
 ```
 
 CSV 路面使用 `time,height` 两列，可带表头；相对路径基于仓库工作目录。
@@ -121,3 +119,9 @@ CSV 路面使用 `time,height` 两列，可带表头；相对路径基于仓库�
 
 贡献约定见 [AGENTS.md](AGENTS.md)，整理及验证记录见
 [项目整理记录](docs/project_maintenance.md)。
+
+## 维护与追溯
+
+参见 [项目地图](docs/PROJECT_MAP.md)、[实验索引](docs/EXPERIMENT_INDEX.md) 和 [整理报告](docs/REFACTOR_REPORT.md)。复现请显式指定权重，latest 不代表最佳模型。
+
+当前算法设计仅面向半车（车身垂向、俯仰及前后轮运动）。CarSim/CARLA 保留为半车控制器的整车验证平台，不属于主 Python 模型。Chrono 已移除。

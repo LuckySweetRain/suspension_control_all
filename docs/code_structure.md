@@ -18,7 +18,6 @@ WSL 的 Python 3.7 客户端环境定义在 `environments/carla0911-wsl.yml`，�
 | 范围 | 入口与职责 | 环境 |
 |---|---|---|
 | 主研究工程 | `scripts/` 调用 `config.py`、`models/`、`roads/`、`envs/`、`controllers/`、`rl/`、`experiments/`、`visualization/` | suspension-control；源码兼容 Python 3.10 |
-| Chrono | `chrono/scripts/` 调用 `chrono/chrono_suspension/`，独立维护整车模型、配置和检查 | 见 chrono/README.md |
 | MATLAB/CarSim | `carsim_mpc_quick/run_*.m`、`src/` 与仓库已有 `.slx` 模型 | MATLAB、外部 CarSim 数据库 |
 | CARLA/Orin 前端 | 下表中的命令入口和 Windows `runtime/` 公共基础设施 | carla0911，Python 3.7 |
 | Orin 控制端 | `controller.py`、`depth_preview.py`、`server.py`、`environment_server.py`、`native_solver.py`、`qp_native.cpp` | Orin 独立目录，由 deploy_orin.py 上传 |
@@ -27,7 +26,7 @@ WSL 的 Python 3.7 客户端环境定义在 `environments/carla0911-wsl.yml`，�
 
 ```text
 carsim_mpc_quick/orin/
-  start_environment_loop.ps1     统一日常入口；支持 -Compare 和 -RoadProfile
+  start_environment_loop.ps1     兼容包装器；日常入口为 scripts/run_cosim.py
   run_environment_loop.py       单车地形、深度预瞄、接触反馈编排
   run_comparison.py             主动/被动双求解器与同一 CARLA 时钟编排
   comparison_worker.py          子进程独占 CarSim DLL
@@ -86,3 +85,5 @@ conda run -n carla0911 python carsim_mpc_quick/orin/carla_stack.py --help
 
 验证工件见 `results/code_cleanup_20261027/`，包括初始审计、修改前源码备份、提取定义的
 AST 对照和重构前后 1000 步轨迹比较。该结果说明本次重构保持行为，不构成新的性能提升结论。
+
+当前范围：Chrono 已移除，半车控制算法主线保留，CarSim/CARLA/Orin 仅作为独立验证平台保留。上文带日期的记录描述历史状态。

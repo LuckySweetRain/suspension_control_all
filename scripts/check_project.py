@@ -59,8 +59,6 @@ def expect_error(error_type, function, *args, **kwargs):
 def check_configs(config: dict, out: Path) -> dict:
     reports = []
     for path in sorted((ROOT / "configs").glob("*.yaml")):
-        if path.name == "chrono_quarter_car.yaml":
-            continue  # Independent quarter-car schema and runner.
         report = validate_config(path)
         assert report["passed"], report
         reports.append(report)

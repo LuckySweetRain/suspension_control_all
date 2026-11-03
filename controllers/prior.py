@@ -269,7 +269,6 @@ def policy_improvement_gate(
         np.sqrt(
             d.get("ddzb", 0.0) ** 2
             + float(gate_cfg.get("pitch_acc_scale", 0.2)) * d.get("ddtheta", 0.0) ** 2
-            + float(gate_cfg.get("roll_acc_scale", 0.2)) * d.get("ddroll", 0.0) ** 2
         )
     )
     accel_threshold = float(gate_cfg.get("accel_threshold", 1.5))

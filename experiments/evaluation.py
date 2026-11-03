@@ -232,33 +232,6 @@ def rollout(env: HalfCarEnv, controller, use_preview: bool) -> dict:
             "unsafe": int(info["unsafe"]),
             "preview_used": int(use_preview),
         }
-        if len(state) >= 14:
-            row.update(
-                {
-                    "roll": state[4],
-                    "droll": state[5],
-                    "zwfl": state[6],
-                    "zwfr": state[8],
-                    "zwrl": state[10],
-                    "zwrr": state[12],
-                }
-            )
-        if "road_corners" in info:
-            rc = info["road_corners"]
-            row.update(
-                {
-                    "zdfl": rc[0],
-                    "zdfr": rc[2],
-                    "zdrl": rc[4],
-                    "zdrr": rc[6],
-                }
-            )
-        if "corner_action" in info:
-            ca = info["corner_action"]
-            row.update({"Ufl": ca[0], "Ufr": ca[1], "Url": ca[2], "Urr": ca[3]})
-        if "command_corner_action" in info:
-            cc = info["command_corner_action"]
-            row.update({"Ucmd_fl": cc[0], "Ucmd_fr": cc[1], "Ucmd_rl": cc[2], "Ucmd_rr": cc[3]})
         if "command_action" in info:
             cmd = info["command_action"]
             row["Ucmd_af"] = cmd[0]
@@ -285,12 +258,6 @@ def rollout(env: HalfCarEnv, controller, use_preview: bool) -> dict:
                 row[f"mpc_param_gain_{gain_name}"] = float(value)
         for component_name, value in info.get("reward_components", {}).items():
             row[f"reward_{component_name}"] = float(value)
-        if "ddroll" in d:
-            row["ddroll"] = d["ddroll"]
-        for corner in ("fl", "fr", "rl", "rr"):
-            if f"delta_y_{corner}" in d:
-                row[f"delta_y_{corner}"] = d[f"delta_y_{corner}"]
-                row[f"F_tire_{corner}"] = d[f"F_tire_{corner}"]
         records.append(row)
         done = terminated or truncated
     return {"data": pd.DataFrame(records), "return": float(sum(r["reward"] for r in records))}
@@ -352,29 +319,6 @@ def compute_metrics(df: pd.DataFrame, settle_seconds: float = 1.0) -> dict:
         metrics[f"Mean{column.removeprefix('reward_').title().replace('_', '')}Penalty"] = float(
             view[column].mean()
         )
-    if "ddroll" in df.columns:
-        metrics.update(
-            {
-                "RollAccRMS_radps2": rms("ddroll"),
-                "RollAccPeak_radps2": peak("ddroll"),
-                "MaxRoll_rad": peak("roll") if "roll" in df.columns else 0.0,
-            }
-        )
-    for corner in ("fl", "fr", "rl", "rr"):
-        susp_name = f"delta_y_{corner}"
-        tire_name = f"F_tire_{corner}"
-        action_name = f"U{corner}"
-        if susp_name in df.columns:
-            metrics[f"MaxSusp_{corner}_m"] = peak(susp_name)
-        if tire_name in df.columns:
-            metrics[f"TireLoadRMS_{corner}_N"] = rms(tire_name)
-        if action_name in df.columns:
-            metrics[f"MaxU_{corner}_N"] = peak(action_name)
-        command_name = f"Ucmd_{corner}"
-        if action_name in df.columns and command_name in df.columns:
-            metrics[f"ActuatorTrackRMS_{corner}_N"] = float(
-                np.sqrt(np.mean(np.square((view[command_name] - view[action_name]).to_numpy())))
-            )
     return metrics
 
 

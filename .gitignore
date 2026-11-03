@@ -27,9 +27,9 @@ tmp_*.pptx
 *.npz
 
 # Reproducible presentation previews, extraction output, and duplicate backups.
-projects/**/ppt_render_png/
-projects/**/validation/
-projects/**/backup/
-projects/**/confirm_ui/
+docs/projects/**/ppt_render_png/
+docs/projects/**/validation/
+docs/projects/**/backup/
+docs/projects/**/confirm_ui/
 Thumbs.db
 .DS_Store

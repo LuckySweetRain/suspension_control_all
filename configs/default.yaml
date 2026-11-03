@@ -71,15 +71,6 @@ spdf:
     body_vel_limit: 1.0
     pitch_vel_limit: 2.0
 
-reduced_full_car_mpc:
-  k_z: 1200.0
-  k_dz: 1800.0
-  k_pitch: 950.0
-  k_dpitch: 700.0
-  k_roll: 850.0
-  k_droll: 650.0
-  k_preview: 18000.0
-
 residual_control:
   enabled: false
   prior: spdf

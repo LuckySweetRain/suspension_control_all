@@ -1,3 +1,9 @@
+"""强化学习共享网络：编码基础状态和路面预瞄，输出策略或价值估计。
+
+批量观测为 [B, base_dim + T * token_dim]，预瞄按时间步排列。
+本模块只定义网络计算，参数更新由各算法模块负责。
+"""
+
 from __future__ import annotations
 
 import math
@@ -36,6 +42,7 @@ class SinusoidalPositionalEncoding(nn.Module):
 
 
 class PreviewEncoder(nn.Module):
+    """将 [B, T, token_dim] 预瞄编码为 [B, embed_dim] 的固定长度特征。"""
     def __init__(
         self, token_dim: int, embed_dim: int, layers: int, heads: int, ff_dim: int, dropout: float
     ):
@@ -53,8 +60,10 @@ class PreviewEncoder(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=layers)
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        # 投影后为 [B, T, embed_dim]；位置编码保留预瞄顺序信息。
         x = self.pos(self.proj(tokens))
         encoded = self.encoder(x)
+        # 沿时间维平均，保持输出宽度与预瞄步数无关。
         return encoded.mean(dim=1)
 
 
@@ -69,6 +78,7 @@ class ObsSpec:
         return self.base_dim + self.preview_steps * self.preview_token_dim
 
     def split(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """拆分二维批量观测为基础状态 [B, base_dim] 和预瞄 [B, T, token_dim]。"""
         base = obs[..., : self.base_dim]
         preview = obs[..., self.base_dim :].reshape(
             obs.shape[0], self.preview_steps, self.preview_token_dim

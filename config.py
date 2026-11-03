@@ -1,3 +1,8 @@
+"""主研究工程的配置入口：合并 YAML 继承并校验半车观测与动作维度。
+
+父配置相对当前 YAML 解析；算法覆盖返回副本，不修改调用方的基线配置。
+"""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -8,6 +13,7 @@ import yaml
 
 
 def deep_update(base: dict, override: dict) -> dict:
+    """递归合并字典并复制可变值；列表整体替换，避免实验之间共享配置状态。"""
     result = deepcopy(base)
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(result.get(key), dict):
@@ -18,7 +24,7 @@ def deep_update(base: dict, override: dict) -> dict:
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
-    """Load parent-relative YAML inheritance, rejecting cycles and invalid roots."""
+    """读取 YAML 并从父层到子层合并；循环继承或非字典根节点抛出 ValueError。"""
     current = Path(path).resolve()
     paths: list[Path] = []
     layers: list[dict[str, Any]] = []
@@ -47,7 +53,11 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 def half_car_dimensions(config: dict[str, Any]) -> tuple[int, int, int]:
-    """Return action, preview-token, and base-observation dimensions for HalfCarEnv."""
+    """返回动作、预瞄 token、基础观测维度；仅支持 privileged 半车观测。
+
+    动作和 token 均为前后轴两维，基础观测为 14 维，可追加两维上一时刻动作。
+    不支持的历史或噪声设置直接报错，避免配置与实际网络输入不一致。
+    """
     observation = config.get("observation", {})
     if str(observation.get("mode", "privileged")).lower() != "privileged":
         raise ValueError("HalfCarEnv only implements observation.mode=privileged")
