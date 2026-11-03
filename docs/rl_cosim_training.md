@@ -115,6 +115,12 @@ P95 7.399 ms、P99 10.541 ms、最大 13.168 ms，1.4% 超过 10 ms。
 
 ### 实时条件时效限制
 
+本次端侧环境快照保存于 `results/orin/environment_20261103.json`：ARM64、Jetson Linux
+R39.2、Python 3.12.3、PyTorch 2.13.0+cu132。该 PyTorch 在查询设备时报告 CC 8.7
+兼容性警告，`nvpmodel -q` 虽返回 MAXN，但同时有部分 CPU sysfs 参数读取错误；
+因此不把查询成功当作 CUDA 全面兼容或频率已锁定的证明。PPO 导出模型的评估明确使用
+CPU 单线程，Qwen 保持已运行服务，不在训练中途更换环境或调整电源模式。
+
 `results/cosim_ppo_qwen_train_20261103_v1/latency_feasibility.json` 记录了前七个完整回合的
 336 次真实 Qwen 推理：耗时最小/中位/最大为 3.660/3.739/3.944 s。当前观测构造只在
 采集年龄不超过 1 s 且仍有至少两个未来轨迹点时使用该条件，因此这些推理在真实时间下
