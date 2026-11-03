@@ -125,3 +125,6 @@ CSV 路面使用 `time,height` 两列，可带表头；相对路径基于仓库�
 参见 [项目地图](docs/PROJECT_MAP.md)、[实验索引](docs/EXPERIMENT_INDEX.md) 和 [整理报告](docs/REFACTOR_REPORT.md)。复现请显式指定权重，latest 不代表最佳模型。
 
 当前算法设计仅面向半车（车身垂向、俯仰及前后轮运动）。CarSim/CARLA 保留为半车控制器的整车验证平台，不属于主 Python 模型。Chrono 已移除。
+
+Qwen 条件 PPO 的真实 CARLA/CarSim 训练入口、当前证据和 Orin 推理验证边界见
+[联合仿真 RL 训练记录](docs/rl_cosim_training.md)。目前属于训练与验证阶段，不能将短回合或端侧推理通过解释为性能提升或实时闭环验收。

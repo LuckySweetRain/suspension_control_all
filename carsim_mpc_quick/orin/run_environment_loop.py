@@ -41,6 +41,7 @@ def timing_summary(trace):
 def run(args):
     carla = load_carla()
     planner_name = getattr(args, "planner", None)
+    context_only = getattr(args, "qwen_context_only", False)
     recorder = None
     state_log = None
     curvature = getattr(args, "road_curvature", 0.0)
@@ -95,6 +96,7 @@ def run(args):
     settings.synchronous_mode, settings.fixed_delta_seconds = True, 0.05
     actors, solver, connection, viewer, contact = [], None, None, None, None
     planner_connection, driving_observation = None, None
+    rl_connection = None
     traffic_audit, traffic_snapshot = None, None
     plans = []
     wall_start = time.perf_counter()
@@ -226,7 +228,9 @@ def run(args):
                 report["driving_lidar"] = dict(
                     channels=64, points_per_second=600000, rotation_hz=10, yaw_deg=-90, z_m=2.5
                 )
-            planner_connection = OrinConnection(args.orin_host, 55003, timeout=180)
+            planner_connection = OrinConnection(
+                args.orin_host, getattr(args, "planner_port", 55003), timeout=180
+            )
             status, _ = planner_connection.exchange({"op": "status"})
             expected_identity = {
                 "qwen": "qwen-drive-1.0-sft",
@@ -290,10 +294,14 @@ def run(args):
             output,
             terrain=terrain,
             contact=True,
-            driving=bool(planner_name),
+            driving=bool(planner_name) and not context_only,
             stop_time=args.seconds + 1,
         )
         report["solver_owner_pid"] = getattr(solver, "owner_pid", os.getpid())
+        report["qwen_context_only"] = context_only
+        if context_only:
+            report["driving_policy"] = "CarSim built-in driver; Qwen advice only"
+            report["driving_control_location"] = "CarSim"
         report["solver_process_has_carla_client"] = getattr(
             solver, "server_carla_client_loaded", True
         )
@@ -306,13 +314,17 @@ def run(args):
                 "tagged frontal geometry only; unclassified hits recorded without force"
             )
         connection = OrinConnection(args.orin_host, 55002)
+        if getattr(args, "rl_port", None):
+            rl_connection = OrinConnection("127.0.0.1", args.rl_port, timeout=300)
+            report["suspension_policy"] = "ppo_training_bridge"
+            report["rl_protocol"] = 1
         digest = hashlib.sha256((ROOT / "results/orin/quick_mpc_data.mat").read_bytes()).hexdigest()
         values = solver.initial
         if driving_observation is not None:
             driving_observation.observe_state(values, 0)
             driving_observation.observe_images(images, 0)
         vision = pack_vision(images["depth"], images["semantic"], terrain, 0)
-        if planner_name:
+        if planner_name and not context_only:
             vision["driving_preview_mode"] = True
             report["driving_preview"] = "four-tyre spatial depth sampling along commanded curvature"
         # One-time equilibrium calibration, not future road preview. The dynamics
@@ -415,7 +427,7 @@ def run(args):
                 contact=collision,
                 vision=vision,
             )
-            if driving_observation is not None:
+            if driving_observation is not None and not context_only:
                 request["driving"] = driving_observation.driving_state(values, plan)
             start = time.perf_counter()
             reply, rpc_ms = connection.exchange(request)
@@ -429,13 +441,53 @@ def run(args):
                 report["rejected_reply"] = reply
                 raise RuntimeError("Rejected environment control reply")
             forces = reply["forces"]
+            if rl_connection is not None:
+                learned, _ = rl_connection.exchange(
+                    dict(
+                        version=1,
+                        op="act",
+                        seq=seq,
+                        time=solver.t,
+                        episode=str(output),
+                        exports=values,
+                        preview=reply["image_preview_w"],
+                        coverage=reply["image_axle_coverage"],
+                        supervisor=bool(reply["preview_warmup"] or collision["active"]),
+                        plan=plan,
+                        planner=planner_name,
+                    )
+                )
+                if learned.get("seq") != seq or learned.get("op") != "action":
+                    raise RuntimeError("Rejected PPO action response")
+                reply["mpc_reference_forces"] = forces
+                reply["mpc_reference_diagnostics"] = reply["diagnostics"]
+                reply["rl"] = learned
+                forces = learned["forces"]
+                reply["forces"] = forces
+                reply["diagnostics"] = learned["commanded_axis_N"] + [0.0] * 8
             if len(forces) != 8 or not all(math.isfinite(f) and abs(f) <= 5000 for f in forces):
                 raise RuntimeError("Invalid actuator force")
             solver_start = time.perf_counter()
             driving_inputs = None
-            if driving_observation is not None:
+            if driving_observation is not None and not context_only:
                 driving_inputs = reply["driving"]["carsim_inputs"]
             values = solver.step(forces, fx, driving_inputs=driving_inputs)
+            if rl_connection is not None:
+                acknowledgement, _ = rl_connection.exchange(
+                    dict(
+                        version=1,
+                        op="transition",
+                        seq=seq,
+                        time=solver.t,
+                        exports=values,
+                        truncated=seq + 1 == round(args.seconds / 0.01),
+                        terminated=bool(collision["active"]),
+                    )
+                )
+                if acknowledgement.get("op") != "recorded":
+                    raise RuntimeError("PPO transition was not recorded")
+                if collision["active"]:
+                    raise RuntimeError("PPO episode terminated by contact; evidence retained")
             if driving_observation is not None:
                 driving_observation.observe_state(values, solver.t)
             solver_ms = (time.perf_counter() - solver_start) * 1000
@@ -486,7 +538,7 @@ def run(args):
                         lateral_m=lateral, heading_error_deg=heading_error, station_m=lane.s
                     )
                 vision = pack_vision(images["depth"], images["semantic"], terrain, solver.t)
-                if planner_name:
+                if planner_name and not context_only:
                     vision["driving_preview_mode"] = True
                 if procedural:
                     for kind, station in [("wave", 31.25), ("bump", 62), ("pothole", 87)]:
@@ -561,6 +613,9 @@ def run(args):
                 np.array([t["reply"]["diagnostics"][:2] for t in trace]) >= 1999, axis=0
             ).tolist(),
         )
+        if rl_connection is not None:
+            report["max_normalized_qp_violation"] = None
+            report["diagnostic_source"] = "PPO commanded axis forces; no QP certificate"
     except Exception as error:
         report["error"] = str(error)
         if "images" in locals():
@@ -579,6 +634,8 @@ def run(args):
                 report.update(passed=False, recording_error=str(error))
         if connection is not None:
             connection.close()
+        if rl_connection is not None:
+            rl_connection.close()
         if planner_connection is not None:
             planner_connection.close()
         if solver is not None:
@@ -642,6 +699,11 @@ if __name__ == "__main__":
         "--spawn", type=int, default=None, help="默认使用 Town03 已验证的 159 号起点"
     )
     parser.add_argument("--orin-host", default="192.168.50.2")
+    parser.add_argument("--planner-port", type=int, default=55003)
+    parser.add_argument("--qwen-context-only", action="store_true")
+    parser.add_argument(
+        "--rl-port", type=int, help="Local PPO training endpoint; overrides MPC forces"
+    )
     parser.add_argument(
         "--town", help="Explicit CARLA city map, e.g. Town05; specify a spawn index"
     )
@@ -669,6 +731,10 @@ if __name__ == "__main__":
         help="Orin real-weight driving planner for CARLA town or procedural roads",
     )
     arguments = parser.parse_args()
+    if arguments.qwen_context_only and (
+        arguments.planner != "qwen" or arguments.road_curvature or arguments.road_profile == "town"
+    ):
+        parser.error("qwen-context-only requires Qwen and a straight procedural test road")
     if arguments.record and arguments.planner not in ("tcp", "transfuser"):
         parser.error("record requires --planner tcp or transfuser")
     if not math.isfinite(arguments.road_curvature) or abs(arguments.road_curvature) > 0.01:
