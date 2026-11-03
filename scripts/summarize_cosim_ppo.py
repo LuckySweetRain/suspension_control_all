@@ -42,6 +42,23 @@ def summarize(run: Path) -> dict:
             episode["qwen_inference_ms_p50_p95_max"] = np.percentile(
                 [plan["inference_ms"] for plan in plans], [50, 95, 100]
             ).tolist()
+        remote = [row["inference"] for row in rows if row.get("inference") is not None]
+        if remote:
+            episode["orin_inference_samples"] = len(remote)
+            for field in ("rpc_ms", "compute_ms"):
+                values = np.asarray([item[field] for item in remote], dtype=float)
+                episode["orin_" + field + "_p50_p95_p99_max"] = np.percentile(
+                    values, [50, 95, 99, 100]
+                ).tolist()
+                episode["orin_" + field + "_over_10ms_fraction"] = float(np.mean(values > 10))
+        if len(rows) > 1:
+            # Observation at step 1 uses exports produced by step 0. Recover
+            # the same equilibrium reference used by the recorded policy schema.
+            initial_jounce = y[0, 44:48] - 80 * np.asarray(rows[1]["observation"])[4:8]
+            travel = (y[:, 44:48] - initial_jounce) / 1000
+            episode["max_relative_suspension_travel_m"] = float(abs(travel).max())
+            episode["relative_travel_over_80mm_fraction"] = float(np.mean(abs(travel) > 0.08))
+        episode["min_native_tire_load_N"] = float(y[:, 52:56].min())
         episodes.append(episode)
     result = dict(
         run=str(run), scope="recorded 10 ms samples, no substep peak guarantee", episodes=episodes
