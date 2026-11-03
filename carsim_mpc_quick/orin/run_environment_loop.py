@@ -15,6 +15,7 @@ import numpy as np
 from carla_contact import FrontalContact
 from carla_terrain import CarlaTerrain
 from rough_road import PROFILES, generate_world, road_bounds, specification, verify_mesh
+from runtime.async_planner import AsyncPlanner
 from runtime.paths import ROOT, SETTINGS, load_carla
 from runtime.protocol import OrinConnection
 from runtime.sensors import image_at, pack_vision, spawn_camera, spawn_driving_lidar
@@ -42,6 +43,10 @@ def run(args):
     carla = load_carla()
     planner_name = getattr(args, "planner", None)
     context_only = getattr(args, "qwen_context_only", False)
+    asynchronous = getattr(args, "async_qwen", False)
+    if asynchronous and not (planner_name == "qwen" and context_only):
+        raise ValueError("Async Qwen requires Qwen context-only mode")
+    async_planner = None
     recorder = None
     state_log = None
     curvature = getattr(args, "road_curvature", 0.0)
@@ -239,6 +244,8 @@ def run(args):
             }[planner_name]
             if status.get("model") != expected_identity or not status.get("ready"):
                 raise RuntimeError("Selected Orin model is not ready: " + str(status))
+            if asynchronous:
+                async_planner = AsyncPlanner(planner_connection)
             report["driving_scope"] = (
                 "lane following with an explicit next-junction navigation hint; not a driving benchmark"
             )
@@ -338,6 +345,10 @@ def run(args):
         for seq in range(round(args.seconds / 0.01)):
             cycle_start = time.perf_counter()
             plan = None
+            if async_planner is not None:
+                plan = async_planner.poll(solver.t)
+                if plan is not None:
+                    plans.append(plan)
             if (
                 driving_observation is not None
                 and driving_observation.ready
@@ -397,27 +408,32 @@ def run(args):
                 packet = driving_observation.request(
                     len(plans), nav_command=nav_command, target_xy_m=target_xy
                 )
-                if not plans:
+                if not plans and async_planner is None:
                     (output / "first_driving_request.json").write_text(json.dumps(packet))
-                if viewer is None:
-                    plan, planner_rpc_ms = planner_connection.exchange(packet)
+                if async_planner is not None:
+                    accepted = async_planner.submit(packet)
+                    if accepted and async_planner.submitted == 1:
+                        (output / "first_driving_request.json").write_text(json.dumps(packet))
                 else:
-                    plan, planner_rpc_ms = viewer.wait_for_planner(
-                        lambda packet=packet: planner_connection.exchange(packet)
-                    )
-                if plan.get("version") != 3 or plan.get("seq") != packet["seq"]:
-                    raise RuntimeError("Rejected planner reply: " + str(plan))
-                expected_model = {
-                    "qwen": "qwen-drive-1.0-sft",
-                    "tcp": "tcp-third-party-reproduction",
-                    "transfuser": "transfuser-cvpr2021-official",
-                }[planner_name]
-                if (
-                    plan.get("model") != expected_model
-                    or plan["captured_at"] != packet["captured_at"]
-                ):
-                    raise RuntimeError("Planner identity or capture timestamp mismatch")
-                plans.append(dict(plan, rpc_ms=planner_rpc_ms))
+                    if viewer is None:
+                        plan, planner_rpc_ms = planner_connection.exchange(packet)
+                    else:
+                        plan, planner_rpc_ms = viewer.wait_for_planner(
+                            lambda packet=packet: planner_connection.exchange(packet)
+                        )
+                    if plan.get("version") != 3 or plan.get("seq") != packet["seq"]:
+                        raise RuntimeError("Rejected planner reply: " + str(plan))
+                    expected_model = {
+                        "qwen": "qwen-drive-1.0-sft",
+                        "tcp": "tcp-third-party-reproduction",
+                        "transfuser": "transfuser-cvpr2021-official",
+                    }[planner_name]
+                    if (
+                        plan.get("model") != expected_model
+                        or plan["captured_at"] != packet["captured_at"]
+                    ):
+                        raise RuntimeError("Planner identity or capture timestamp mismatch")
+                    plans.append(dict(plan, rpc_ms=planner_rpc_ms))
             fx, collision = contact.force(values, seq * 0.01)
             request = dict(
                 version=2,
@@ -636,6 +652,16 @@ def run(args):
             connection.close()
         if rl_connection is not None:
             rl_connection.close()
+        if async_planner is not None:
+            report["async_planner"] = dict(
+                submitted=async_planner.submitted,
+                completed=async_planner.completed,
+                skipped_busy=async_planner.skipped_busy,
+                pending_at_end=async_planner.future is not None,
+                scope="nonblocking Qwen transport; simulator clock, not hard real-time",
+            )
+            async_planner.close()
+            planner_connection = None
         if planner_connection is not None:
             planner_connection.close()
         if solver is not None:
@@ -701,6 +727,7 @@ if __name__ == "__main__":
     parser.add_argument("--orin-host", default="192.168.50.2")
     parser.add_argument("--planner-port", type=int, default=55003)
     parser.add_argument("--qwen-context-only", action="store_true")
+    parser.add_argument("--async-qwen", action="store_true")
     parser.add_argument(
         "--rl-port", type=int, help="Local PPO training endpoint; overrides MPC forces"
     )

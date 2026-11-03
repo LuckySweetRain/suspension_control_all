@@ -42,6 +42,12 @@ def summarize(run: Path) -> dict:
             episode["qwen_inference_ms_p50_p95_max"] = np.percentile(
                 [plan["inference_ms"] for plan in plans], [50, 95, 100]
             ).tolist()
+        asynchronous = [plan for plan in plans if "arrival_age_s" in plan]
+        if asynchronous:
+            for field in ("arrival_age_s", "request_wall_seconds"):
+                episode["qwen_async_" + field + "_p50_p95_max"] = np.percentile(
+                    [plan[field] for plan in asynchronous], [50, 95, 100]
+                ).tolist()
         remote = [row["inference"] for row in rows if row.get("inference") is not None]
         if remote:
             episode["orin_inference_samples"] = len(remote)

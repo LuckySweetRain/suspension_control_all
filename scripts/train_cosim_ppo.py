@@ -265,6 +265,7 @@ def main():
     parser.add_argument("--planner", choices=("qwen",))
     parser.add_argument("--planner-port", type=int, default=55003)
     parser.add_argument("--qwen-context-only", action="store_true")
+    parser.add_argument("--async-qwen", action="store_true")
     parser.add_argument("--mode", choices=("train", "evaluate", "passive"), default="train")
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--inference-host")
@@ -285,6 +286,8 @@ def main():
         parser.error("Deterministic evaluation requires --checkpoint")
     if args.qwen_context_only and args.planner != "qwen":
         parser.error("qwen-context-only requires --planner qwen")
+    if args.async_qwen and not (args.planner == "qwen" and args.qwen_context_only):
+        parser.error("async-qwen requires --planner qwen --qwen-context-only")
     if args.inference_host and (args.mode != "evaluate" or args.policy_bundle is None):
         parser.error("Remote inference requires --mode evaluate and --policy-bundle")
     if args.episodes < 1 or not 0.05 <= args.seconds <= 13:
@@ -378,6 +381,8 @@ def main():
                 command += ["--planner", args.planner, "--planner-port", str(args.planner_port)]
             if args.qwen_context_only:
                 command += ["--qwen-context-only"]
+            if args.async_qwen:
+                command += ["--async-qwen"]
             write_json(folder / "command.json", command)
             with (
                 (folder / "simulator.log").open("w", encoding="utf-8") as log,
