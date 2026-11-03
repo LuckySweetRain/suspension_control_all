@@ -32,11 +32,57 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False), encoding="utf-8")
 
 
+class RemotePolicy:
+    """Fail closed on disconnection or identity mismatch; no local-policy fallback."""
+
+    def __init__(self, host, port, manifest):
+        self.digest = manifest["policy_sha256"]
+        self.socket = socket.create_connection((host, port), timeout=10)
+        self.socket.settimeout(30)
+        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.incoming = self.socket.makefile("rb")
+        self.seq = 0
+        self.last_timing = None
+        status = self.exchange(dict(op="status"))
+        if status.get("policy_sha256") != self.digest or status.get("schema") != "cosim-ppo-v1":
+            self.close()
+            raise ValueError("Orin policy identity/schema mismatch")
+
+    def exchange(self, request):
+        self.socket.sendall((json.dumps(request, allow_nan=False) + "\n").encode())
+        line = self.incoming.readline(16385)
+        if len(line) > 16384 or not line.endswith(b"\n"):
+            raise RuntimeError("Disconnected or invalid Orin policy response")
+        return json.loads(line)
+
+    def action(self, obs):
+        start = time.perf_counter_ns()
+        reply = self.exchange(
+            dict(version=1, seq=self.seq, policy_sha256=self.digest, observation=obs.tolist())
+        )
+        elapsed = (time.perf_counter_ns() - start) / 1e6
+        if reply.get("seq") != self.seq or reply.get("policy_sha256") != self.digest:
+            raise ValueError("Orin inference identity/sequence mismatch")
+        action = np.asarray(reply["raw_axis_N"], dtype=np.float32)
+        if action.shape != (2,) or not np.isfinite(action).all() or np.max(abs(action)) > 2000.01:
+            raise ValueError("Invalid Orin action")
+        self.last_timing = dict(
+            rpc_ms=elapsed, compute_ms=reply["compute_ms"], device=reply["device"]
+        )
+        self.seq += 1
+        return action
+
+    def close(self):
+        self.incoming.close()
+        self.socket.close()
+
+
 class Episode:
     """Explicit native units, deterministic actuator projection and causal context."""
 
-    def __init__(self, agent, stream, mode="train"):
+    def __init__(self, agent, stream, mode="train", remote=None):
         self.agent, self.stream, self.mode = agent, stream, mode
+        self.remote = remote
         self.origin = None
         self.previous = np.zeros(2)
         self.plan = None
@@ -103,7 +149,7 @@ class Episode:
             if self.mode == "passive":
                 raw, logp, value = np.zeros(2), 0.0, 0.0
             elif self.mode == "evaluate":
-                raw = self.agent.select_action(obs)
+                raw = self.remote.action(obs) if self.remote else self.agent.select_action(obs)
                 logp, value = 0.0, self.agent.estimate_value(obs)
             else:
                 raw, logp, value = self.agent.act_for_training(obs)
@@ -170,6 +216,7 @@ class Episode:
                     executed_action=self.previous.tolist(),
                     corner_forces=p["corner_forces"].tolist(),
                     supervisor=p["request"]["supervisor"],
+                    inference=self.remote.last_timing if self.remote else None,
                     exports=y.tolist(),
                     observation=p["obs"].tolist(),
                     logp=p["logp"],
@@ -220,6 +267,9 @@ def main():
     parser.add_argument("--qwen-context-only", action="store_true")
     parser.add_argument("--mode", choices=("train", "evaluate", "passive"), default="train")
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--inference-host")
+    parser.add_argument("--inference-port", type=int, default=55111)
+    parser.add_argument("--policy-bundle", type=Path)
     parser.add_argument(
         "--road-profile", choices=("wave", "bump", "pothole", "combined"), default="wave"
     )
@@ -235,6 +285,8 @@ def main():
         parser.error("Deterministic evaluation requires --checkpoint")
     if args.qwen_context_only and args.planner != "qwen":
         parser.error("qwen-context-only requires --planner qwen")
+    if args.inference_host and (args.mode != "evaluate" or args.policy_bundle is None):
+        parser.error("Remote inference requires --mode evaluate and --policy-bundle")
     if args.episodes < 1 or not 0.05 <= args.seconds <= 13:
         parser.error("Require episodes >= 1 and seconds between 0.05 and 13")
     args.output.mkdir(parents=True, exist_ok=False)
@@ -264,6 +316,14 @@ def main():
                 "Checkpoint architecture/configuration differs from the current schema"
             )
         agent.load(args.checkpoint)
+    remote_manifest = None
+    if args.inference_host:
+        remote_manifest = json.loads((args.policy_bundle / "manifest.json").read_text())
+        if (
+            remote_manifest["checkpoint_sha256"]
+            != hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
+        ):
+            raise ValueError("Inference bundle and evaluation checkpoint differ")
     write_json(
         args.output / "manifest.json",
         dict(
@@ -323,6 +383,11 @@ def main():
                 (folder / "simulator.log").open("w", encoding="utf-8") as log,
                 (folder / "transitions.jsonl").open("w", encoding="utf-8") as stream,
             ):
+                remote = (
+                    RemotePolicy(args.inference_host, args.inference_port, remote_manifest)
+                    if args.inference_host
+                    else None
+                )
                 child_env = os.environ.copy()
                 prefix = Path(args.carla_python).resolve().parent
                 # Python 3.7 NumPy loads native DLLs from PATH. Never inherit the
@@ -340,7 +405,7 @@ def main():
                 process = subprocess.Popen(
                     command, cwd=ROOT, env=child_env, stdout=log, stderr=subprocess.STDOUT
                 )
-                episode = Episode(agent, stream, mode=args.mode)
+                episode = Episode(agent, stream, mode=args.mode, remote=remote)
                 try:
                     deadline = time.monotonic() + 180
                     while True:
@@ -400,6 +465,9 @@ def main():
                             process.terminate()
                             process.wait(timeout=15)
                     raise
+                finally:
+                    if remote:
+                        remote.close()
     if args.mode == "train":
         agent.save(args.output / "final.pt")
 

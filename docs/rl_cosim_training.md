@@ -87,3 +87,26 @@ conda run --no-capture-output -n suspension-control python scripts/train_cosim_p
 导出 104 维观测到两轴原始主动增量力的确定性 TorchScript，附 SHA256 和回放样本。
 `scripts/benchmark_cosim_policy.py <导出目录>` 检查 batch=1 的 CPU 数值一致性与时延。
 导出网络不含观测预处理、限幅、变化率限制和被动阻尼映射；最终闭环必须复用同一契约。
+
+## 端侧闭环接口与异步准备（2026-11-03 后续）
+
+新增 `scripts/serve_cosim_policy.py`：CPU 单线程 TorchScript 端点，校验 schema、权重
+SHA256、观测维度和连续序号。单次请求只返回两轴原始力，不直接驱动真实执行器。
+训练入口在 `--mode evaluate` 时可设置 `--inference-host`、`--inference-port` 和
+`--policy-bundle`。网络失败不会回退本机策略；bundle 必须匹配指定 checkpoint。
+
+Orin 初期策略端点运行在 `suspension-ppo-probe.service`、55111 端口，部署路径同前。
+500 条真实观测 TCP 回放的最大力误差为 0.000106812 N；往返时间中位数 5.046 ms、
+P95 7.399 ms、P99 10.541 ms、最大 13.168 ms，1.4% 超过 10 ms。
+报告为 `results/cosim_ppo_orin_probe_20261103_v1/orin_rpc_benchmark.json`。
+这已经包含推理和 JSON/TCP，但不包含传感器、预瞄和车辆执行，不是完整实时达标证据。
+
+新增 `runtime/async_planner.py`，提供单请求在途、非阻塞 poll、捕获时间与坐标原点
+不可变校验；不把旧结果重新标成当前结果，也不伪造模型输出。
+`python scripts/check_async_planner.py` 已通过非阻塞、单请求、元数据冻结和错误时间戳
+拒绝检查。此模块尚未接入正在运行的仿真批次；当前 12 回合继续使用原同步模型。
+
+本轮 `python -m ruff check .` 通过；`python scripts/check_project.py` 七项通过，报告
+`results/project_checks/20261103_202736_423888/report.json`。
+下一阶段在 12 回合结束后检查逐回合完成证据，导出最终权重，再进行未见组合路面的
+被动/PPO 对照、Qwen 条件消融、Orin 实际动作闭环和异步延迟评估。
