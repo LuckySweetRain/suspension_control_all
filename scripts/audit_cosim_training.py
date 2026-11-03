@@ -122,7 +122,7 @@ def audit(run):
             )
             physical = json.loads((simulation / "trace.json").read_text())
             require(len(physical) == len(rows), "Simulator/learner trajectory lengths differ")
-            for row, actual in zip(rows, physical):
+            for row, actual in zip(rows, physical, strict=True):
                 require(
                     np.allclose(row["exports"], actual["values"], rtol=0, atol=1e-9),
                     "Learner next state differs from actual solver output",
