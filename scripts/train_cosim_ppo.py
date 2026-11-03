@@ -266,6 +266,7 @@ def main():
     parser.add_argument("--planner-port", type=int, default=55003)
     parser.add_argument("--qwen-context-only", action="store_true")
     parser.add_argument("--async-qwen", action="store_true")
+    parser.add_argument("--capture-substeps", action="store_true")
     parser.add_argument("--mode", choices=("train", "evaluate", "passive"), default="train")
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--inference-host")
@@ -383,6 +384,8 @@ def main():
                 command += ["--qwen-context-only"]
             if args.async_qwen:
                 command += ["--async-qwen"]
+            if args.capture_substeps:
+                command += ["--capture-substeps"]
             write_json(folder / "command.json", command)
             with (
                 (folder / "simulator.log").open("w", encoding="utf-8") as log,

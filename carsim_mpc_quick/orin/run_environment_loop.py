@@ -327,6 +327,10 @@ def run(args):
             report["rl_protocol"] = 1
         digest = hashlib.sha256((ROOT / "results/orin/quick_mpc_data.mat").read_bytes()).hexdigest()
         values = solver.initial
+        if getattr(args, "capture_substeps", False):
+            if not hasattr(solver, "dll"):
+                raise ValueError("Substep capture requires the local native CarSim backend")
+            solver.capture_substeps = True
         if driving_observation is not None:
             driving_observation.observe_state(values, 0)
             driving_observation.observe_images(images, 0)
@@ -522,6 +526,8 @@ def run(args):
                 )
             )
             vision = None
+            if getattr(args, "capture_substeps", False):
+                trace[-1]["substeps"] = solver.last_substeps
             state_log.write(solver.t, values, reply)
             if (seq + 1) % 5 == 0:
                 position = terrain.to_world(
@@ -728,6 +734,7 @@ if __name__ == "__main__":
     parser.add_argument("--planner-port", type=int, default=55003)
     parser.add_argument("--qwen-context-only", action="store_true")
     parser.add_argument("--async-qwen", action="store_true")
+    parser.add_argument("--capture-substeps", action="store_true")
     parser.add_argument(
         "--rl-port", type=int, help="Local PPO training endpoint; overrides MPC forces"
     )

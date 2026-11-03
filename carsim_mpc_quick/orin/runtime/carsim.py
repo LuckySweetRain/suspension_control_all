@@ -163,12 +163,18 @@ class CarSim:
         elif driving_inputs is not None:
             raise ValueError("Driving inputs supplied to a suspension-only run")
         inputs = (ct.c_double * self.n_import)(*values)
+        self.last_substeps = []
         for _ in range(10):
             self.t += 0.001
             status = self.dll.vs_integrate_io(self.t, inputs, self.values)
             self.check()
             if status:
                 raise RuntimeError(f"CarSim integration stopped: {status} at {self.t}")
+            if getattr(self, "capture_substeps", False):
+                sample = list(self.values)
+                if not all(math.isfinite(v) for v in sample):
+                    raise RuntimeError("Nonfinite CarSim integration substep")
+                self.last_substeps.append(dict(time=self.t, values=sample))
         if not all(math.isfinite(v) for v in self.values):
             raise RuntimeError("Nonfinite CarSim state")
         return list(self.values)
