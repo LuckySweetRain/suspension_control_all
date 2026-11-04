@@ -93,6 +93,10 @@ class Episode:
         self.seq = 0
         self.complete = False
         self.buffer = {key: [] for key in ("obs", "act", "logp", "value", "rew", "done")}
+        from rl.cosim_observation import SensorObservation
+
+        sensor_config = getattr(agent, "cosim_observation", None)
+        self.sensor_observation = SensorObservation(sensor_config) if sensor_config else None
 
     def observation(self, request):
         y = np.asarray(request["exports"], dtype=float)
@@ -100,6 +104,8 @@ class Episode:
             raise ValueError("Invalid native CarSim exports")
         if self.origin is None:
             self.origin = y.copy()
+        if self.sensor_observation is not None:
+            return self.sensor_observation(request, self.previous)
         if request.get("plan") is not None:
             plan = request["plan"]
             if plan["model"] != "qwen-drive-1.0-sft":
@@ -325,13 +331,18 @@ def main():
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     project_config = load_config(args.config)
+    observation_config = project_config.get("cosim_observation")
+    if observation_config and observation_config["mode"] not in ("measured", "estimated"):
+        parser.error("Unknown sensor observation mode")
+    if observation_config and (args.inference_host or args.planner):
+        parser.error("Sensor ablation currently supports local policy and no planner only")
     reward_config = project_config.get("cosim_reward")
     if reward_config is not None:
         validate_reward(reward_config)
     config = replace(
         PPOConfig.from_project_config(project_config),
-        obs_dim_base=24,
-        preview_steps=20,
+        obs_dim_base=96 if observation_config else 24,
+        preview_steps=1 if observation_config else 20,
         preview_token_dim=4,
         act_limit=2000,
         transformer_dropout=0,
@@ -345,8 +356,11 @@ def main():
     )
     agent = PPOAgent(config, torch.device("cpu"))
     agent.cosim_reward = reward_config
+    agent.cosim_observation = observation_config
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+        if checkpoint.get("cosim_observation") != observation_config:
+            raise ValueError("Checkpoint observation semantics differ")
         if PPOConfig(**checkpoint["cfg"]).__dict__ != config.__dict__:
             raise ValueError(
                 "Checkpoint architecture/configuration differs from the current schema"
@@ -370,7 +384,7 @@ def main():
             reward_config=reward_config,
             git=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
             device="cpu",
-            observation_schema="cosim-ppo-v1",
+            observation_schema=observation_config or "cosim-ppo-v1",
             scope="real CARLA terrain, CarSim dynamics, Orin measured depth preview",
             timing="offline_synchronous; not real-time validation",
             reward_sampling="10 ms endpoint samples; not integrated 1 ms reward",
@@ -388,6 +402,7 @@ def main():
         ROOT / "rl/ppo.py",
         ROOT / "rl/networks.py",
         ROOT / "rl/cosim_reward.py",
+        ROOT / "rl/cosim_observation.py",
     ]
     hashes = {}
     for source in sources:

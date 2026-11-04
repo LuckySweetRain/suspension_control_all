@@ -422,6 +422,7 @@ class PPOAgent:
                 "value": self.value.state_dict(),
                 "constraint_weights": self.constraint_weight_summary(),
                 "cosim_reward": getattr(self, "cosim_reward", None),
+                "cosim_observation": getattr(self, "cosim_observation", None),
                 "training_state": {
                     "actor_optimizer": self.actor_optimizer.state_dict(),
                     "value_optimizer": self.value_optimizer.state_dict(),

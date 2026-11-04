@@ -60,6 +60,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--project", default="suspension-control")
     parser.add_argument("--entity")
+    parser.add_argument("--name", default="PPO literature 300k")
     parser.add_argument("--mode", choices=("online", "offline"), default="online")
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
@@ -74,7 +75,7 @@ def main():
     run = wandb.init(
         project=args.project,
         entity=args.entity,
-        name="PPO literature 300k",
+        name=args.name,
         id=state.get("run_id"),
         resume="allow",
         mode=args.mode,
@@ -82,12 +83,17 @@ def main():
         config={
             "ppo": first.get("ppo"),
             "reward": first.get("reward_config"),
-            "additional_training_steps": 300000,
+            "observation": first.get("observation_schema"),
+            "planned_steps": first.get("args", {}).get("episodes", 0)
+            * round(first.get("args", {}).get("seconds", 0) * 100),
             "source": "verified local scalar summaries",
         },
         settings=wandb.Settings(
             base_url="https://api.wandb.ai",
-            disable_git=True, disable_code=True, console="off", x_disable_stats=True
+            disable_git=True,
+            disable_code=True,
+            console="off",
+            x_disable_stats=True,
         ),
     )
     run.define_metric("training_steps")

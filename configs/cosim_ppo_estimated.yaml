@@ -1,0 +1,4 @@
+inherits: cosim_ppo_literature.yaml
+cosim_observation:
+  mode: estimated
+  noise_seed: 20261104
