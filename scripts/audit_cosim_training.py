@@ -93,7 +93,9 @@ def audit(run):
             require(error < 0.002, f"Stored logp does not match behavior actor: {error}")
             checkpoint = folder / "checkpoint.pt"
             saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
-            require(saved["cfg"] == cfg.__dict__, "Checkpoint configuration drift")
+            require(
+                PPOConfig(**saved["cfg"]).__dict__ == cfg.__dict__, "Checkpoint configuration drift"
+            )
             require(
                 all(
                     bool(torch.isfinite(t).all())

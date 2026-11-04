@@ -1,0 +1,31 @@
+# Literature-informed engineering hypothesis; preserve configs/ppo.yaml as the baseline.
+inherits: ppo.yaml
+rl:
+  critic_lr: 0.0001
+  ppo:
+    clip_ratio: 0.2
+    target_kl: 0.015
+    value_clip: 0.2
+    initial_log_std: -3.0
+    log_std_min: -5.0
+    log_std_max: -2.0
+    entropy_coef: 0.0001
+    squashed_entropy: true
+cosim_reward:
+  reward_scale: 0.1
+  scales:
+    accel_mps2: 2.0
+    pitch_radps2: 1.0
+    travel_mm: 80.0
+    force_N: 2000.0
+    delta_N: 150.0
+  weights:
+    accel: 1.0
+    pitch: 0.05
+    travel: 0.1
+    tire: 0.2
+    effort: 0.005
+    slew: 0.01
+    projection: 0.05
+    violation: 10.0
+    unload: 10.0

@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from config import load_config  # noqa: E402
+from rl.cosim_reward import reward_terms, validate_reward  # noqa: E402
 from rl.ppo import PPOAgent, PPOConfig, finish_ppo_trajectory  # noqa: E402
 
 
@@ -80,9 +81,10 @@ class RemotePolicy:
 class Episode:
     """Explicit native units, deterministic actuator projection and causal context."""
 
-    def __init__(self, agent, stream, mode="train", remote=None):
+    def __init__(self, agent, stream, mode="train", remote=None, reward_config=None):
         self.agent, self.stream, self.mode = agent, stream, mode
         self.remote = remote
+        self.reward_config = reward_config
         self.origin = None
         self.previous = np.zeros(2)
         self.plan = None
@@ -194,6 +196,16 @@ class Episode:
             slew=0.01 * np.mean(((p["executed"] - p["previous"]) / 150) ** 2),
             violation=10 * np.mean(np.maximum(abs(travel) - 1, 0) ** 2),
         )
+        if self.reward_config is not None:
+            terms = reward_terms(
+                y,
+                self.origin,
+                p["raw"],
+                p["executed"],
+                p["previous"],
+                p["request"]["supervisor"],
+                self.reward_config,
+            )
         reward = -float(sum(terms.values()))
         self.previous = p["executed"]
         for key, item in (
@@ -262,6 +274,7 @@ def main():
     parser.add_argument("--seconds", type=float, default=3)
     parser.add_argument("--port", type=int, default=55110)
     parser.add_argument("--seed", type=int, default=20261103)
+    parser.add_argument("--config", type=Path, default=ROOT / "configs/ppo.yaml")
     parser.add_argument("--planner", choices=("qwen",))
     parser.add_argument("--planner-port", type=int, default=55003)
     parser.add_argument("--qwen-context-only", action="store_true")
@@ -297,8 +310,12 @@ def main():
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+    project_config = load_config(args.config)
+    reward_config = project_config.get("cosim_reward")
+    if reward_config is not None:
+        validate_reward(reward_config)
     config = replace(
-        PPOConfig.from_project_config(load_config(ROOT / "configs/ppo.yaml")),
+        PPOConfig.from_project_config(project_config),
         obs_dim_base=24,
         preview_steps=20,
         preview_token_dim=4,
@@ -313,13 +330,16 @@ def main():
         transformer_ff_dim=64,
     )
     agent = PPOAgent(config, torch.device("cpu"))
+    agent.cosim_reward = reward_config
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-        if checkpoint["cfg"] != config.__dict__:
+        if PPOConfig(**checkpoint["cfg"]).__dict__ != config.__dict__:
             raise ValueError(
                 "Checkpoint architecture/configuration differs from the current schema"
             )
         agent.load(args.checkpoint)
+        if checkpoint.get("cosim_reward") != reward_config:
+            raise ValueError("Checkpoint and requested reward configuration differ")
     remote_manifest = None
     if args.inference_host:
         remote_manifest = json.loads((args.policy_bundle / "manifest.json").read_text())
@@ -333,6 +353,7 @@ def main():
         dict(
             args={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
             ppo=config.__dict__,
+            reward_config=reward_config,
             git=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
             device="cpu",
             observation_schema="cosim-ppo-v1",
@@ -352,6 +373,7 @@ def main():
         ROOT / "carsim_mpc_quick/orin/run_environment_loop.py",
         ROOT / "rl/ppo.py",
         ROOT / "rl/networks.py",
+        ROOT / "rl/cosim_reward.py",
     ]
     hashes = {}
     for source in sources:
@@ -413,7 +435,9 @@ def main():
                 process = subprocess.Popen(
                     command, cwd=ROOT, env=child_env, stdout=log, stderr=subprocess.STDOUT
                 )
-                episode = Episode(agent, stream, mode=args.mode, remote=remote)
+                episode = Episode(
+                    agent, stream, mode=args.mode, remote=remote, reward_config=reward_config
+                )
                 try:
                     deadline = time.monotonic() + 180
                     while True:
@@ -453,6 +477,7 @@ def main():
                         steps=episode.seq,
                         reward_sum=sum(episode.buffer["rew"]),
                         losses=losses,
+                        ppo_diagnostics=agent.last_train_stats if args.mode == "train" else None,
                     )
                     write_json(folder / "summary.json", summary)
                     print(json.dumps(summary), flush=True)

@@ -50,6 +50,10 @@ class PPOConfig:
     transformer_dropout: float
     log_std_min: float = -5.0
     log_std_max: float = 1.0
+    target_kl: float = 0.0
+    value_clip: float = 0.0
+    initial_log_std: float | None = None
+    squashed_entropy: bool = False
 
     @property
     def obs_dim(self) -> int:
@@ -96,6 +100,10 @@ class PPOConfig:
             transformer_dropout=float(rl["transformer_dropout"]),
             log_std_min=float(ppo.get("log_std_min", -5.0)),
             log_std_max=float(ppo.get("log_std_max", 1.0)),
+            target_kl=float(ppo.get("target_kl", 0.0)),
+            value_clip=float(ppo.get("value_clip", 0.0)),
+            initial_log_std=ppo.get("initial_log_std"),
+            squashed_entropy=bool(ppo.get("squashed_entropy", False)),
         )
 
 
@@ -104,6 +112,14 @@ class PPOAgent:
         self.cfg = cfg
         self.device = device
         self.actor = TransformerGaussianActor(cfg).to(device)
+        if cfg.target_kl < 0 or cfg.value_clip < 0:
+            raise ValueError("KL and value clipping thresholds must be nonnegative")
+        if cfg.initial_log_std is not None:
+            if not cfg.log_std_min <= cfg.initial_log_std <= cfg.log_std_max:
+                raise ValueError("Initial log std must be inside configured bounds")
+            nn.init.zeros_(self.actor.log_std.weight)
+            nn.init.constant_(self.actor.log_std.bias, cfg.initial_log_std)
+        self.last_train_stats = {}
         self.value = TransformerValue(cfg).to(device)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=cfg.actor_lr)
         self.value_optimizer = optim.Adam(self.value.parameters(), lr=cfg.critic_lr)
@@ -257,18 +273,36 @@ class PPOAgent:
             )
             adv = torch.where(adv > 0.0, adv * feasibility_weight, adv)
         n = obs.shape[0]
+        old_values = None
+        if self.cfg.value_clip > 0:
+            old_values = torch.as_tensor(
+                np.asarray(trajectory["value"]), dtype=torch.float32, device=self.device
+            ).reshape(-1, 1)
         actor_losses = []
         value_losses = []
+        early_stop = False
+        clip_fractions = []
         for _ in range(self.cfg.train_epochs):
             indices = torch.randperm(n, device=self.device)
             for start in range(0, n, self.cfg.minibatch_size):
                 idx = indices[start : start + self.cfg.minibatch_size]
                 logp, entropy = self.log_prob(obs[idx], act[idx])
                 ratio = torch.exp(logp - old_logp[idx])
+                approx_kl = ((ratio - 1) - (logp - old_logp[idx])).mean()
+                if not torch.isfinite(approx_kl):
+                    raise ValueError("Nonfinite PPO likelihood ratio")
+                if self.cfg.target_kl > 0 and approx_kl.item() > 1.5 * self.cfg.target_kl:
+                    early_stop = True
+                    break
+                clip_fractions.append(float((abs(ratio - 1) > self.cfg.clip_ratio).float().mean()))
                 clipped = (
                     torch.clamp(ratio, 1 - self.cfg.clip_ratio, 1 + self.cfg.clip_ratio) * adv[idx]
                 )
                 actor_loss = -(torch.min(ratio * adv[idx], clipped)).mean()
+                if self.cfg.squashed_entropy:
+                    _, current_logp = self.actor.sample(obs[idx])
+                    # Entropy of the current tanh policy in normalized action coordinates.
+                    entropy = -current_logp - self.cfg.act_dim * np.log(self.cfg.act_limit)
                 actor_loss = actor_loss - self.cfg.entropy_coef * entropy.mean()
                 if self.projection_penalty_weight > 0.0:
                     actor_loss = (
@@ -305,14 +339,40 @@ class PPOAgent:
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.cfg.gradient_clip)
                 self.actor_optimizer.step()
 
-                value_loss = nn.MSELoss()(self.value(obs[idx]), returns[idx]) * self.cfg.value_coef
+                prediction = self.value(obs[idx])
+                value_error = (prediction - returns[idx]).square()
+                if old_values is not None:
+                    clipped_value = old_values[idx] + torch.clamp(
+                        prediction - old_values[idx], -self.cfg.value_clip, self.cfg.value_clip
+                    )
+                    value_error = torch.maximum(
+                        value_error, (clipped_value - returns[idx]).square()
+                    )
+                value_loss = value_error.mean() * self.cfg.value_coef
                 self.value_optimizer.zero_grad()
                 value_loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.value.parameters(), self.cfg.gradient_clip)
                 self.value_optimizer.step()
                 actor_losses.append(float(actor_loss.item()))
                 value_losses.append(float(value_loss.item()))
-        return float(np.mean(value_losses)), float(np.mean(actor_losses))
+            if early_stop:
+                break
+        with torch.no_grad():
+            final_logp, _ = self.log_prob(obs, act)
+            delta = final_logp - old_logp
+            variance = returns.var(unbiased=False)
+            explained = 1 - (returns - self.value(obs)).var(unbiased=False) / (variance + 1e-8)
+        self.last_train_stats = dict(
+            approx_kl=float((delta.exp() - 1 - delta).mean()),
+            clip_fraction=float(np.mean(clip_fractions)) if clip_fractions else 0.0,
+            explained_variance=float(explained),
+            optimizer_steps=len(actor_losses),
+            kl_early_stop=early_stop,
+        )
+        return (
+            float(np.mean(value_losses)) if value_losses else 0.0,
+            float(np.mean(actor_losses)) if actor_losses else 0.0,
+        )
 
     def pretrain_actor_bc(
         self,
@@ -361,6 +421,7 @@ class PPOAgent:
                 "actor": self.actor.state_dict(),
                 "value": self.value.state_dict(),
                 "constraint_weights": self.constraint_weight_summary(),
+                "cosim_reward": getattr(self, "cosim_reward", None),
             },
             path,
         )
