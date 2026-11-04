@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -282,6 +283,11 @@ def main():
     parser.add_argument("--capture-substeps", action="store_true")
     parser.add_argument("--mode", choices=("train", "evaluate", "passive"), default="train")
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--resume-training", action="store_true")
+    parser.add_argument("--eval-every", type=int, default=0)
+    parser.add_argument(
+        "--eval-road", choices=("wave", "bump", "pothole", "combined"), default="combined"
+    )
     parser.add_argument("--inference-host")
     parser.add_argument("--inference-port", type=int, default=55111)
     parser.add_argument("--policy-bundle", type=Path)
@@ -298,6 +304,10 @@ def main():
     args = parser.parse_args()
     if args.mode == "evaluate" and args.checkpoint is None:
         parser.error("Deterministic evaluation requires --checkpoint")
+    if args.resume_training and (args.mode != "train" or args.checkpoint is None):
+        parser.error("resume-training requires train mode and a checkpoint with optimizer state")
+    if args.eval_every < 0 or (args.eval_every and (args.mode != "train" or args.planner)):
+        parser.error("Periodic evaluation requires pure suspension training and eval-every >= 0")
     if args.qwen_context_only and args.planner != "qwen":
         parser.error("qwen-context-only requires --planner qwen")
     if args.async_qwen and not (args.planner == "qwen" and args.qwen_context_only):
@@ -337,7 +347,7 @@ def main():
             raise ValueError(
                 "Checkpoint architecture/configuration differs from the current schema"
             )
-        agent.load(args.checkpoint)
+        agent.load(args.checkpoint, resume_training=args.resume_training)
         if checkpoint.get("cosim_reward") != reward_config:
             raise ValueError("Checkpoint and requested reward configuration differ")
     remote_manifest = None
@@ -381,11 +391,91 @@ def main():
         (source_dir / source.name).write_bytes(data)
         hashes[str(source.relative_to(ROOT))] = hashlib.sha256(data).hexdigest()
     write_json(source_dir / "sha256.json", hashes)
+    evaluation_history = []
+    best_score = float("inf")
+
+    def evaluate_checkpoint(label, checkpoint_path=None):
+        nonlocal best_score
+        from scripts.summarize_cosim_ppo import summarize
+
+        evaluation = args.output / "evaluations" / label
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--config",
+            str(args.config),
+            "--carla-python",
+            args.carla_python,
+            "--episodes",
+            "1",
+            "--seconds",
+            str(args.seconds),
+            "--road-profile",
+            args.eval_road,
+            "--seed",
+            str(args.seed),
+            "--port",
+            str(args.port + 1),
+            "--output",
+            str(evaluation),
+            "--mode",
+            "passive" if checkpoint_path is None else "evaluate",
+        ]
+        if checkpoint_path is not None:
+            command += ["--checkpoint", str(checkpoint_path)]
+        write_json(
+            args.output / "status.json", dict(stage="evaluating", label=label, pid=os.getpid())
+        )
+        evaluation.parent.mkdir(exist_ok=True)
+        with (evaluation.parent / (label + ".log")).open("w", encoding="utf-8") as log:
+            try:
+                subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
+            except BaseException:
+                write_json(
+                    args.output / "status.json",
+                    dict(
+                        stage="failed_evaluation",
+                        label=label,
+                        pid=os.getpid(),
+                        error=traceback.format_exc(),
+                    ),
+                )
+                raise
+        metrics = summarize(evaluation)["episodes"]
+        if len(metrics) != 1 or not metrics[0]["completed"]:
+            raise RuntimeError("Incomplete periodic evaluation")
+        row = dict(label=label, checkpoint=str(checkpoint_path), **metrics[0])
+        evaluation_history.append(row)
+        write_json(args.output / "evaluation_history.json", evaluation_history)
+        # Select a candidate by comfort only when travel/contact-load screening passes.
+        score = row["vertical_accel_rms_mps2"]
+        eligible = (
+            row["relative_travel_over_80mm_fraction"] == 0 and row["min_native_tire_load_N"] > 0
+        )
+        if checkpoint_path is not None and eligible and score < best_score:
+            best_score = score
+            shutil.copy2(checkpoint_path, args.output / "best.pt")
+            write_json(args.output / "best_evaluation.json", row)
+        print(json.dumps(dict(periodic_evaluation=row)), flush=True)
+
+    if args.eval_every:
+        evaluate_checkpoint("passive")
+        agent.save(args.output / "initial.pt")
+        evaluate_checkpoint("initial", args.output / "initial.pt")
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", args.port))
         listener.listen(1)
         listener.settimeout(1)
         for index in range(args.episodes):
+            write_json(
+                args.output / "status.json",
+                dict(
+                    stage="training" if args.mode == "train" else args.mode,
+                    episode=index,
+                    completed_episodes=index,
+                    pid=os.getpid(),
+                ),
+            )
             folder = args.output / f"episode_{index:04d}"
             folder.mkdir()
             command = [
@@ -483,6 +573,15 @@ def main():
                     print(json.dumps(summary), flush=True)
                 except BaseException:
                     write_json(
+                        args.output / "status.json",
+                        dict(
+                            stage="failed_training",
+                            episode=index,
+                            pid=os.getpid(),
+                            error=traceback.format_exc(),
+                        ),
+                    )
+                    write_json(
                         folder / "failure.json",
                         dict(
                             error=traceback.format_exc(),
@@ -501,8 +600,29 @@ def main():
                 finally:
                     if remote:
                         remote.close()
+            if args.eval_every and (
+                index == 0 or (index + 1) % args.eval_every == 0 or index + 1 == args.episodes
+            ):
+                evaluate_checkpoint(f"after_{index + 1:04d}", folder / "checkpoint.pt")
     if args.mode == "train":
         agent.save(args.output / "final.pt")
+    if args.eval_every:
+        from scripts.audit_cosim_training import audit
+
+        write_json(args.output / "status.json", dict(stage="auditing", pid=os.getpid()))
+        try:
+            if not audit(args.output)["run_complete"]:
+                raise RuntimeError("Final training audit did not pass")
+        except BaseException:
+            write_json(
+                args.output / "status.json",
+                dict(stage="failed_audit", pid=os.getpid(), error=traceback.format_exc()),
+            )
+            raise
+    write_json(
+        args.output / "status.json",
+        dict(stage="completed", completed_episodes=args.episodes, pid=os.getpid(), completed=True),
+    )
 
 
 if __name__ == "__main__":

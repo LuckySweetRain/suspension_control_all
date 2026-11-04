@@ -32,6 +32,8 @@ def audit(run):
     torch.set_num_threads(2)
     torch.manual_seed(manifest["args"]["seed"])
     behavior = PPOAgent(cfg, torch.device("cpu"))
+    if manifest["args"].get("checkpoint"):
+        behavior.load(Path(manifest["args"]["checkpoint"]))
     behavior.actor.eval()
     results = []
     expected_episodes = manifest["args"]["episodes"]

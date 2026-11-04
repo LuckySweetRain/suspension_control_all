@@ -422,14 +422,30 @@ class PPOAgent:
                 "value": self.value.state_dict(),
                 "constraint_weights": self.constraint_weight_summary(),
                 "cosim_reward": getattr(self, "cosim_reward", None),
+                "training_state": {
+                    "actor_optimizer": self.actor_optimizer.state_dict(),
+                    "value_optimizer": self.value_optimizer.state_dict(),
+                    "torch_rng": torch.get_rng_state(),
+                    "numpy_rng": np.random.get_state(),
+                },
             },
             path,
         )
 
-    def load(self, path: Path):
+    def load(self, path: Path, resume_training: bool = False):
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
         self.actor.load_state_dict(ckpt["actor"])
         self.value.load_state_dict(ckpt["value"])
+        if resume_training:
+            if "training_state" not in ckpt:
+                raise ValueError(
+                    "Checkpoint has no optimizer/RNG state; use explicit weight-only loading"
+                )
+            state = ckpt["training_state"]
+            self.actor_optimizer.load_state_dict(state["actor_optimizer"])
+            self.value_optimizer.load_state_dict(state["value_optimizer"])
+            torch.set_rng_state(state["torch_rng"].cpu())
+            np.random.set_state(state["numpy_rng"])
         for key, value in ckpt.get("constraint_weights", {}).items():
             if key == "projection_penalty_weight":
                 self.projection_penalty_weight = float(value)
