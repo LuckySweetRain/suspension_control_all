@@ -285,6 +285,8 @@ def main():
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--resume-training", action="store_true")
     parser.add_argument("--eval-every", type=int, default=0)
+    parser.add_argument("--artifact-policy", choices=("full", "compact"), default="full")
+    parser.add_argument("--keep-every", type=int, default=25)
     parser.add_argument(
         "--eval-road", choices=("wave", "bump", "pothole", "combined"), default="combined"
     )
@@ -304,6 +306,8 @@ def main():
     args = parser.parse_args()
     if args.mode == "evaluate" and args.checkpoint is None:
         parser.error("Deterministic evaluation requires --checkpoint")
+    if args.keep_every < 1:
+        parser.error("keep-every must be positive")
     if args.resume_training and (args.mode != "train" or args.checkpoint is None):
         parser.error("resume-training requires train mode and a checkpoint with optimizer state")
     if args.eval_every < 0 or (args.eval_every and (args.mode != "train" or args.planner)):
@@ -478,6 +482,13 @@ def main():
             )
             folder = args.output / f"episode_{index:04d}"
             folder.mkdir()
+            compact = args.artifact_policy == "compact" and args.mode == "train"
+            retain = (
+                not compact
+                or index == 0
+                or (index + 1) % args.keep_every == 0
+                or index + 1 == args.episodes
+            )
             command = [
                 args.carla_python,
                 str(ROOT / "carsim_mpc_quick/orin/run_environment_loop.py"),
@@ -489,6 +500,8 @@ def main():
                 else args.road_profile,
                 "--rl-port",
                 str(args.port),
+                "--artifact-owner",
+                str(folder.resolve()),
             ]
             if args.planner:
                 command += ["--planner", args.planner, "--planner-port", str(args.planner_port)]
@@ -553,7 +566,12 @@ def main():
                     if code != 0 or not episode.complete:
                         raise RuntimeError(f"Simulator exit {code}; no PPO update")
                     losses = None
+                    metrics, proof = {}, None
                     if args.mode == "train":
+                        if compact:
+                            from scripts.cosim_recording import inspect_episode
+
+                            metrics, proof = inspect_episode(folder, agent)
                         losses = agent.train_trajectory(episode.buffer)
                         if not np.isfinite(losses).all() or not all(
                             bool(torch.isfinite(p).all())
@@ -561,16 +579,30 @@ def main():
                             for p in model.parameters()
                         ):
                             raise RuntimeError("Nonfinite PPO update; checkpoint not accepted")
-                        agent.save(folder / "checkpoint.pt")
+                        if compact:
+                            agent.save(args.output / "latest.pending.pt")
+                            os.replace(args.output / "latest.pending.pt", args.output / "latest.pt")
+                            if retain:
+                                shutil.copy2(args.output / "latest.pt", folder / "checkpoint.pt")
+                        else:
+                            agent.save(folder / "checkpoint.pt")
                     summary = dict(
                         episode=index,
                         steps=episode.seq,
                         reward_sum=sum(episode.buffer["rew"]),
                         losses=losses,
                         ppo_diagnostics=agent.last_train_stats if args.mode == "train" else None,
+                        metrics=metrics,
+                        verification=proof,
+                        retained=retain,
                     )
                     write_json(folder / "summary.json", summary)
-                    print(json.dumps(summary), flush=True)
+                    with (args.output / "history.jsonl").open("a", encoding="utf-8") as history:
+                        history.write(json.dumps(summary, allow_nan=False) + "\n")
+                    print(
+                        json.dumps({k: v for k, v in summary.items() if k != "verification"}),
+                        flush=True,
+                    )
                 except BaseException:
                     write_json(
                         args.output / "status.json",
@@ -603,7 +635,14 @@ def main():
             if args.eval_every and (
                 index == 0 or (index + 1) % args.eval_every == 0 or index + 1 == args.episodes
             ):
-                evaluate_checkpoint(f"after_{index + 1:04d}", folder / "checkpoint.pt")
+                evaluate_checkpoint(
+                    f"after_{index + 1:04d}",
+                    args.output / "latest.pt" if compact else folder / "checkpoint.pt",
+                )
+            if compact and not retain:
+                from scripts.cosim_recording import prune_episode
+
+                prune_episode(folder, args.output, proof, ROOT)
     if args.mode == "train":
         agent.save(args.output / "final.pt")
     if args.eval_every:
@@ -611,7 +650,25 @@ def main():
 
         write_json(args.output / "status.json", dict(stage="auditing", pid=os.getpid()))
         try:
-            if not audit(args.output)["run_complete"]:
+            if args.artifact_policy == "compact":
+                records = [
+                    json.loads(s) for s in (args.output / "history.jsonl").read_text().splitlines()
+                ]
+                passed = len(records) == args.episodes and all(
+                    r["verification"]["passed"] for r in records
+                )
+                write_json(
+                    args.output / "audit.json",
+                    dict(
+                        run_complete=passed,
+                        mode="compact_online_verification",
+                        episodes=len(records),
+                        scope="original files verified before pruning; not a replay of deleted raw data",
+                    ),
+                )
+            else:
+                passed = audit(args.output)["run_complete"]
+            if not passed:
                 raise RuntimeError("Final training audit did not pass")
         except BaseException:
             write_json(

@@ -108,6 +108,7 @@ def run(args):
     trace, vision_audit = [], []
     report = dict(
         passed=False,
+        artifact_owner=getattr(args, "artifact_owner", None),
         road_source="CARLA scene terrain callback",
         preview_source="Orin depth image reconstruction",
         semantic_mask="CARLA ground truth, not a trained RGB model",
@@ -735,6 +736,7 @@ if __name__ == "__main__":
     parser.add_argument("--qwen-context-only", action="store_true")
     parser.add_argument("--async-qwen", action="store_true")
     parser.add_argument("--capture-substeps", action="store_true")
+    parser.add_argument("--artifact-owner")
     parser.add_argument(
         "--rl-port", type=int, help="Local PPO training endpoint; overrides MPC forces"
     )

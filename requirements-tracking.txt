@@ -1,0 +1,2 @@
+# Optional experiment tracking; install in the suspension-control Conda environment.
+wandb==0.31.0
