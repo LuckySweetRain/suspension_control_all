@@ -231,6 +231,13 @@ class Episode:
                     time=message["time"],
                     reward=reward,
                     reward_terms=terms,
+                    physical_constraints={
+                        "max_relative_travel_m": float(np.max(abs(travel)) * 0.08),
+                        "travel_violation_fraction": float(np.mean(abs(travel) > 1)),
+                        "low_load_fraction": float(
+                            np.mean(y[52:56] / np.maximum(abs(self.origin[52:56]), 1) < 0.1)
+                        ),
+                    },
                     raw_action=p["raw"].tolist(),
                     executed_action=self.previous.tolist(),
                     corner_forces=p["corner_forces"].tolist(),
@@ -238,6 +245,11 @@ class Episode:
                     inference=self.remote.last_timing if self.remote else None,
                     exports=y.tolist(),
                     observation=p["obs"].tolist(),
+                    state_mapping_diagnostics=(
+                        self.sensor_observation.mapping_diagnostics
+                        if self.sensor_observation is not None
+                        else None
+                    ),
                     logp=p["logp"],
                     value=p["value"],
                     terminated=message["terminated"],
@@ -403,6 +415,7 @@ def main():
         ROOT / "rl/networks.py",
         ROOT / "rl/cosim_reward.py",
         ROOT / "rl/cosim_observation.py",
+        ROOT / "rl/bounded_state.py",
     ]
     hashes = {}
     for source in sources:

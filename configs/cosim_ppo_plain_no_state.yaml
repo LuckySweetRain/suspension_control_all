@@ -1,0 +1,8 @@
+# Counterfactual: remove state penalties without changing the observation.
+inherits: cosim_ppo_measured.yaml
+cosim_reward:
+  weights:
+    travel: 0.0
+    tire: 0.0
+    violation: 0.0
+    unload: 0.0

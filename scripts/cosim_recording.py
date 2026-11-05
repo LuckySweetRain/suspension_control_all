@@ -41,9 +41,16 @@ def inspect_episode(folder, agent):
     executed = np.asarray([r["executed_action"] for r in rows])
     y = np.asarray([r["exports"] for r in rows])
     active = np.asarray([not r["supervisor"] for r in rows])
+    # Native constraints remain visible even with zero constraint reward weights.
+    mapping = [r.get("state_mapping_diagnostics") or {} for r in rows]
     metrics = dict(
         acceleration_rms_mps2=float(np.sqrt(np.mean((y[:, 40] * 9.80665) ** 2))),
         force_rms_N=float(np.sqrt(np.mean(executed**2))),
+        min_native_tire_load_N=float(y[:, 52:56].min()),
+        mapping_outside_fraction=float(np.mean([r.get("outside_bounds", 0) / 4 for r in mapping])),
+        mapping_saturation_fraction=float(
+            np.mean([r.get("numerical_saturations", 0) / 4 for r in mapping])
+        ),
         projection_fraction=float(np.any(abs(raw[active] - executed[active]) > 1e-3, axis=1).mean())
         if active.any()
         else 0.0,
@@ -61,6 +68,15 @@ def inspect_episode(folder, agent):
         transitions_sha256=hashlib.sha256((folder / "transitions.jsonl").read_bytes()).hexdigest(),
         scope="online per-step native state/force and behavior likelihood verification before optional pruning",
     )
+    if all("physical_constraints" in r for r in rows):
+        constraints = [r["physical_constraints"] for r in rows]
+        metrics.update(
+            max_relative_travel_m=max(r["max_relative_travel_m"] for r in constraints),
+            travel_violation_fraction=float(
+                np.mean([r["travel_violation_fraction"] for r in constraints])
+            ),
+            low_load_fraction=float(np.mean([r["low_load_fraction"] for r in constraints])),
+        )
     return metrics, proof
 
 

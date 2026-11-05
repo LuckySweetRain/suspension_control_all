@@ -1,0 +1,5 @@
+# Observation transform only; this is NOT a hard state constraint guarantee.
+inherits: cosim_ppo_measured.yaml
+cosim_observation:
+  travel_mapping: atanh
+  mapping_epsilon: 0.0001

@@ -1,0 +1,8 @@
+# Requested mapping + no state penalties, evaluated as an unproven ablation.
+inherits: cosim_ppo_mapping_keep.yaml
+cosim_reward:
+  weights:
+    travel: 0.0
+    tire: 0.0
+    violation: 0.0
+    unload: 0.0

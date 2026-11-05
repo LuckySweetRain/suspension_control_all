@@ -6,6 +6,8 @@ from collections import deque
 
 import numpy as np
 
+from rl.bounded_state import inverse_tanh_state
+
 
 class SensorObservation:
     def __init__(self, config):
@@ -17,6 +19,10 @@ class SensorObservation:
         self.relative_velocity = np.zeros(4)
         self.body_velocity = 0.0
         self.rng = np.random.default_rng(config["noise_seed"])
+        self.mapping = config.get("travel_mapping", "identity")
+        if self.mapping not in ("identity", "atanh"):
+            raise ValueError("Unknown suspension travel observation mapping")
+        self.mapping_diagnostics = {}
 
     def __call__(self, request, previous):
         now = float(request["time"])
@@ -49,10 +55,20 @@ class SensorObservation:
                 )
                 / 0.5
             )
+        travel_features = travel / 0.08
+        self.mapping_diagnostics = {
+            "outside_bounds": int(np.count_nonzero(abs(travel) > 0.08)),
+            "at_or_outside_bounds": int(np.count_nonzero(abs(travel) >= 0.08)),
+            "numerical_saturations": 0,
+        }
+        if self.mapping == "atanh":
+            travel_features, self.mapping_diagnostics = inverse_tanh_state(
+                travel, -0.08, 0.08, self.config.get("mapping_epsilon", 1e-4)
+            )
         frame = np.concatenate(
             (
                 [az / 5, pitch_rate],
-                travel / 0.08,
+                travel_features,
                 np.asarray(previous) / 2000,
                 [y[76] / 72],
                 estimates,

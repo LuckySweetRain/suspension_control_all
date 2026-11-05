@@ -36,7 +36,12 @@ def summarize(run: Path) -> dict:
             max_commanded_axis_force_N=float(abs(command).max()),
             active_steps=int(np.any(command != 0, axis=1).sum()),
             qwen_plans=len(plans),
-            qwen_context_valid_steps=sum(row["observation"][22] > 0 for row in rows),
+            qwen_context_valid_steps=sum(
+                len(row["observation"]) == 104
+                and row.get("plan") is not None
+                and row["observation"][22] > 0
+                for row in rows
+            ),
         )
         if plans:
             episode["qwen_inference_ms_p50_p95_max"] = np.percentile(
@@ -57,13 +62,29 @@ def summarize(run: Path) -> dict:
                     values, [50, 95, 99, 100]
                 ).tolist()
                 episode["orin_" + field + "_over_10ms_fraction"] = float(np.mean(values > 10))
-        if len(rows) > 1:
+        if all("physical_constraints" in row for row in rows):
+            constraints = [row["physical_constraints"] for row in rows]
+            episode["max_relative_suspension_travel_m"] = max(
+                r["max_relative_travel_m"] for r in constraints
+            )
+            episode["relative_travel_over_80mm_fraction"] = float(
+                np.mean([r["travel_violation_fraction"] for r in constraints])
+            )
+            episode["low_load_fraction"] = float(
+                np.mean([r["low_load_fraction"] for r in constraints])
+            )
+            episode["constraint_metric_source"] = "native_unmapped_state"
+        elif len(rows) > 1 and all(len(row["observation"]) == 104 for row in rows):
             # Observation at step 1 uses exports produced by step 0. Recover
             # the same equilibrium reference used by the recorded policy schema.
             initial_jounce = y[0, 44:48] - 80 * np.asarray(rows[1]["observation"])[4:8]
             travel = (y[:, 44:48] - initial_jounce) / 1000
             episode["max_relative_suspension_travel_m"] = float(abs(travel).max())
             episode["relative_travel_over_80mm_fraction"] = float(np.mean(abs(travel) > 0.08))
+            episode["constraint_metric_source"] = "legacy_v1_equilibrium_reconstruction"
+        else:
+            # Sensor history / atanh coordinates cannot recover the physical origin.
+            episode["constraint_metric_source"] = "unavailable_legacy_sensor_schema"
         episode["min_native_tire_load_N"] = float(y[:, 52:56].min())
         episodes.append(episode)
     result = dict(
