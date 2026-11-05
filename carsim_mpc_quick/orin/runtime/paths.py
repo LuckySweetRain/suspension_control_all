@@ -22,7 +22,7 @@ def read_settings():
         if os.name == "nt"
         else "/opt/carsim_2020.0",
         carsim_library="",
-        carsim_template="results/orin/runtime_run.par",
+        carsim_template="configs/carsim/runtime_run.par",
         carla_egg="",
         windows_conda="conda",
         windows_environment="carla0911",

@@ -18,6 +18,7 @@ __pycache__/
 .ruff_cache/
 AGENTS.local.md
 configs/cosim.local.json
+configs/carsim/runtime_run.par
 tmp/
 tmp_*/
 tmp_*.pptx

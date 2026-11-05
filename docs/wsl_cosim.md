@@ -74,7 +74,7 @@ python scripts/setup_carla_linux_client.py
 | `carla_host`、`carsim_bridge_host`、`carsim_bridge_port` | CARLA 与本机求解器 RPC 端点 |
 | `carsim_program`、`carsim_library` | CarSim 安装目录与 Windows DLL |
 | `carsim_database` | 当前车辆数据库 |
-| `carsim_template` | 已生成的基础 8/77 参数模板 |
+| `carsim_template` | 固定输入模板 `configs/carsim/runtime_run.par`，需从配套数据库准备 |
 | `windows_conda`、`windows_environment` | Windows Conda 可执行文件与旧 CARLA 前端环境 |
 | `orin_host` | Orin 直连地址 |
 
